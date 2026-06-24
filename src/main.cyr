@@ -1,8 +1,12 @@
 # prajna — demo binary.
 # M1: the scalar second-order meta-gradient (MAML core), finite-difference-gated.
+# M2.a: linear-regression MAML on rosnet (coupled params), FD-gated.
 # Stdlib auto-included via cyrius.cyml.
 
-include "src/meta.cyr"               # the meta-gradient core (M1)
+include "lib/tyche.cyr"              # rng_* (rosnet's t_randn -> rng_normal; link dep)
+include "lib/rosnet.cyr"            # t_alloc / linear_fwd / linear_bwd / t_axpy ...
+include "src/meta.cyr"               # the scalar meta-gradient core (M1)
+include "src/maml.cyr"               # linear-regression MAML on rosnet (M2.a)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -59,7 +63,40 @@ fn main() {
     puts("    final     meta_loss="); print_f6(meta_loss(theta)); puts("  theta="); print_f6(theta);
     puts("   (optimum theta=3.5)"); nl();
 
-    if ((ok == 1) && (obs == 1)) { return 0; }
+    # ---- M2.a: linear-regression MAML on rosnet (coupled W[3], b) ----
+    nl();
+    puts("prajna M2.a - linear MAML on rosnet (K=3), 2nd-order meta-grad, FD-gated"); nl();
+    maml_init();
+    maml_meta_grad();                       # fills full (M_oW/M_ob) + FOMAML (M_gW/M_gb)
+    puts("  param     full(2nd)     FOMAML(1st)   finite-diff"); nl();
+    var p = 0;
+    while (p < maml_k() + 1) {
+        if (p < maml_k()) { puts("  W["); fmt_int(p); puts("]    "); } else { puts("  b       "); }
+        print_f6(maml_an_full(p));    puts("  ");
+        print_f6(maml_an_fomaml(p));  puts("  ");
+        print_f6(maml_fd_grad(p));    nl();
+        p = p + 1;
+    }
+    var mok = maml_gate();
+    var mobs = maml_2nd_observable();
+    if (mok == 1) { puts("  GATE  : PASS  (full meta-grad matches finite-diff on all 4 params)"); nl(); }
+    else          { puts("  GATE  : FAIL"); nl(); }
+    if (mobs == 1) { puts("  2nd-ORD: OBSERVABLE  (FOMAML differs from FD -> the term is real)"); nl(); }
+    else           { puts("  2nd-ORD: not observable"); nl(); }
+    # meta-descent on (W,b)
+    puts("  meta-descent (lr=0.3):"); nl();
+    var s = 0;
+    while (s < 6) {
+        puts("    step "); fmt_int(s); puts("  meta_loss="); print_f6(maml_meta_loss()); nl();
+        maml_meta_grad();
+        var mlr = f64_div(f64_from(3), f64_from(10));    # 0.3
+        t_axpy(M_W, M_oW, f64_sub(f64_from(0), mlr), maml_k());
+        store64(M_b, f64_sub(load64(M_b), f64_mul(mlr, load64(M_ob))));
+        s = s + 1;
+    }
+    puts("    final     meta_loss="); print_f6(maml_meta_loss()); nl();
+
+    if ((ok == 1) && (obs == 1) && (mok == 1) && (mobs == 1)) { return 0; }
     return 1;
 }
 

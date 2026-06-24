@@ -23,41 +23,42 @@
 - `cyrius init` scaffold; identity + the attn11/tarka/tentib boundary documented.
 - Name = `prajna` (प्रज्ञा), completing the cognition cluster pramana → tarka → prajna.
 
-### M1 — Scalar second-order meta-gradient (→ v0.2.0) — ✅ core landed 2026-06-24
-The minimal **exact** proof of the primitive, pure scalar f64 (no rosnet yet):
-- `src/meta.cyr` — scalar quadratic MAML: support/query losses, the inner SGD step,
-  the meta-loss, and the analytic **second-order** meta-gradient
-  `dM/dt = Lq'(t')·(1 − α·Ls'')`.
-- **FD gate** green: analytic `−1.919999` vs central finite-diff `−1.920000`.
-- **Honest contrast**: FOMAML (first-order, drops the `(1−α·Ls'')` factor) differs
-  from FD by exactly `0.48` — the second-order term is *observably real*.
-- Meta-descent converges `θ: 0.5 → 3.499` to the optimum `3.5`.
-- `cyrius test` asserts gate + observability + descent.
-- **Acceptance met**; tag `0.2.0` is the user's to cut.
+### M1 — Scalar second-order meta-gradient — ✅ shipped in **0.1.0** (2026-06-24)
+The minimal **exact** proof of the primitive, pure scalar f64 (no rosnet):
+- `src/meta.cyr` — scalar quadratic MAML; analytic **second-order** meta-gradient
+  `dM/dt = Lq'(t')·(1 − α·Ls'')`. **FD gate** green (analytic `−1.919999` vs FD
+  `−1.920000`); FOMAML differs by `0.48` (the second-order term is *observably real*);
+  meta-descent `θ: 0.5 → 3.499` to the optimum `3.5`. Released as part of `0.1.0`.
 
-### M2 — MAML few-shot regression on rosnet (v0.3.0)
-Scale the primitive from scalar to a real model.
-- **Dep gate**: add `rosnet` (f64 tensors + `linear_fwd`/`linear_bwd`) and `tyche`
-  (task sampling). The meta-gradient backprops *through* the inner adapt step of a
-  small MLP — hand-derived on rosnet's first-order ops (rosnet stays first-order;
-  prajna supplies the nesting).
-- **Demo**: meta-learn an initialization on sampled sine-wave tasks; show K-shot fast
-  adaptation (1–few steps) beats a non-meta baseline. Benchmark vs the MAML paper's
-  sine-regression setup (B-series fairness rules).
-- **Honest-negative eligible**: report whether the full second-order term beats
-  FOMAML/Reptile *at this tiny scale* — a finding either way (attn11-MTP style).
+### M2 — MAML few-shot regression on rosnet (→ v0.2.0)
+Scale the primitive from scalar to a real model. Broken into verified sub-bites:
+- **M2.a — linear-MAML on rosnet — ✅ landed 2026-06-24** (`src/maml.cyr`). Wired
+  `rosnet` 0.2.0 + `tyche` 0.1.1 (prajna is now a sibling-on-rosnet). Single linear
+  layer (K=3→1, MSE, one inner SGD step); the second-order meta-grad
+  `dLq/dθ = gθ' − α·(H_s·gθ')` hand-derived, the HVP `H_s·v` computed with one extra
+  `linear_fwd`+`linear_bwd` (constant Hessian for linear+MSE). **FD gate matches on
+  all 4 params exactly**; FOMAML wrong-signed on `W[0]` (`−0.393` vs `+0.031`);
+  meta-descent monotone. `cyrius test` gates M1 + M2.a.
+- **M2.b — MLP + nonlinearity** (next): add a hidden layer + tanh/ReLU so the support
+  Hessian is **θ-dependent** — the true double-backward (no longer a constant HVP).
+  Hand-derive + FD-gate the meta-grad through the MLP's inner step.
+- **M2.c — sine-task sampling + meta-training + demo**: sample sine tasks with `tyche`;
+  meta-train an initialization; show K-shot fast adaptation beats a non-meta baseline;
+  benchmark vs the MAML paper's sine-regression setup (B-series fairness rules).
+  **Honest-negative eligible**: does the full 2nd-order term beat FOMAML/Reptile *at
+  this tiny scale*? — a finding either way (attn11-MTP style).
 
-### M3 — Learned optimizer (v0.4.0)
+### M3 — Learned optimizer (→ v0.3.0)
 The second realization of learn-to-learn on the same meta-grad machinery.
 - A small net meta-trained to emit the update step ("learning to learn by gradient
   descent by gradient descent", Andrychowicz 2016) — meta-learn the *update rule*
   rather than the *initialization*.
 
-### M4 — Text few-shot / attn11 tie-in (v0.5.0)
+### M4 — Text few-shot / attn11 tie-in (→ v0.4.0)
 - **Dep gate**: add `akshara` (tokenizer). Meta-learn over a tiny LM few-shot task —
   the bridge into the rest of the ML family.
 
-### M5 — Continual-learning durability (v0.6.0)
+### M5 — Continual-learning durability (→ v0.5.0)
 - **EWC** (Fisher penalty) + experience replay so sequential meta-adaptations don't
   catastrophically forget — the safety glue the self-improvement-lane flags as
   mandatory for any on-device self-updater.

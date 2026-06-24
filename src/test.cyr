@@ -1,22 +1,36 @@
 # prajna — top-level test entry (referenced by cyrius.cyml [build].test).
-# M1: gate the scalar second-order meta-gradient against finite differences.
+# M1:   gate the scalar second-order meta-gradient against finite differences.
+# M2.a: gate the linear-MAML (rosnet) second-order meta-gradient against FD.
 
 include "lib/syscalls.cyr"
+include "lib/tyche.cyr"
+include "lib/rosnet.cyr"
 include "src/meta.cyr"
+include "src/maml.cyr"
 
 fn main() {
+    alloc_init();
+
+    # ---- M1: scalar meta-gradient ----
     var theta = f64_div(f64_from(1), f64_from(2));      # 0.5
-
-    # (1) the full (2nd-order) meta-grad matches finite differences within tol
-    assert(gate_pass(theta), "meta-grad matches finite-diff (FD gate)");
-
-    # (2) the 2nd-order term is REAL: FOMAML (1st-order) must differ from FD
-    assert(second_order_observable(theta), "FOMAML differs from FD (2nd-order term is real)");
-
-    # (3) one full-meta-grad step reduces the meta-loss (descent direction is correct)
+    assert(gate_pass(theta), "M1: scalar meta-grad matches finite-diff (FD gate)");
+    assert(second_order_observable(theta), "M1: FOMAML differs from FD (2nd-order term is real)");
     var before = meta_loss(theta);
     var after  = meta_loss(f64_sub(theta, meta_grad_full(theta)));
-    assert(f64_le(after, before), "meta-loss descends under the full meta-gradient");
+    assert(f64_le(after, before), "M1: meta-loss descends under the full meta-gradient");
+
+    # ---- M2.a: linear-MAML meta-gradient on rosnet (coupled W[3], b) ----
+    maml_init();
+    maml_meta_grad();
+    assert(maml_gate(), "M2.a: rosnet meta-grad matches finite-diff on all params");
+    assert(maml_2nd_observable(), "M2.a: FOMAML differs from FD (2nd-order term is real)");
+    var mb = maml_meta_loss();
+    maml_meta_grad();
+    var mlr = f64_div(f64_from(3), f64_from(10));
+    t_axpy(M_W, M_oW, f64_sub(f64_from(0), mlr), maml_k());
+    store64(M_b, f64_sub(load64(M_b), f64_mul(mlr, load64(M_ob))));
+    var ma = maml_meta_loss();
+    assert(f64_le(ma, mb), "M2.a: meta-loss descends under the full meta-gradient");
 
     return 0;
 }

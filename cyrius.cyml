@@ -24,3 +24,17 @@ output = "build/prajna"
 # and tyche (task sampling); akshara joins at the text few-shot milestone.
 [deps]
 stdlib = ["string", "fmt", "alloc", "io", "vec", "str", "syscalls", "assert", "bench", "math"]
+
+# rosnet's t_randn calls tyche's rng_normal — [deps.tyche] is MANDATORY for link
+# even though prajna only calls rosnet's tensor/linear ops directly (tentib pattern).
+[deps.tyche]
+git = "https://github.com/MacCracken/tyche"
+tag = "0.1.1"
+modules = ["dist/tyche.cyr"]
+
+# Dense f64 tensor algebra + the linear layer fwd/bwd that M2's MAML meta-gradient
+# backprops THROUGH (the second-order pass is hand-derived on these first-order ops).
+[deps.rosnet]
+git = "https://github.com/MacCracken/rosnet"
+tag = "0.2.0"
+modules = ["dist/rosnet.cyr"]

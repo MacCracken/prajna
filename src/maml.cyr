@@ -1,0 +1,164 @@
+# prajna — M2.a: linear-regression MAML on rosnet, second-order meta-gradient, FD-gated.
+#
+# Single linear layer (K inputs -> 1 output), MSE loss, ONE inner SGD step. Proves
+# the M1 scalar meta-gradient on actual rosnet tensors, with COUPLED parameters.
+#
+#   inner:   θ' = θ - α·∇Ls(θ)                          (one SGD step on the support task)
+#   meta:    Lq(θ')                                      (query loss at the adapted params)
+#   META-GRAD (chain rule through θ'):
+#            dLq/dθ = gθ' - α·(H_s · gθ')
+#              gθ'   = ∇_{θ'} Lq            -> linear_bwd on the query set at θ'
+#              H_s·v = ∇²Ls applied to v.  For linear+MSE H_s is CONSTANT, and:
+#                        u      = Xs·vW + vb            (linear_fwd, v as weights/bias)
+#                        H_s·v  = (1/Ms)·[Xsᵀ·u ; Σu]   (linear_bwd accumulates dW/db)
+#   FOMAML drops the -α·(H_s·gθ') term — the gap is the observable second-order term.
+#
+# Generalizes M1's  dM/dt = Lq'(t')·(1 - α·Ls'')  to a coupled (W[K], b) vector.
+
+fn maml_k(): i64 { return 3; }                                   # input features
+fn maml_ms(): i64 { return 4; }                                  # support examples
+fn maml_mq(): i64 { return 4; }                                  # query examples
+fn maml_alpha(): i64 { return f64_div(f64_from(1), f64_from(10)); }   # 0.1 inner lr
+fn maml_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }  # 1e-4 FD tolerance
+
+# ---- params + scratch tensors (module-global pointers; allocated in maml_init) ----
+var M_W = 0; var M_b = 0;                       # params θ = (W[K], b[1])
+var M_Xs = 0; var M_Ts = 0; var M_Xq = 0; var M_Tq = 0;
+var M_ys = 0; var M_dy = 0;                     # per-row forward / dL-dy scratch (max(Ms,Mq))
+var M_Wp = 0; var M_bp = 0;                     # adapted params θ'
+var M_dWs = 0; var M_dbs = 0;                   # inner support grads
+var M_gW = 0; var M_gb = 0;                     # gθ' (also the FOMAML meta-grad)
+var M_u = 0; var M_hW = 0; var M_hb = 0;        # HVP intermediates
+var M_dxd = 0;                                  # dx dump (unused output of linear_bwd)
+var M_oW = 0; var M_ob = 0;                     # full second-order meta-grad output
+
+fn maml_row(p, i, a, b2, c): i64 {
+    store64(p + (i*3+0)*8, a); store64(p + (i*3+1)*8, b2); store64(p + (i*3+2)*8, c); return 0;
+}
+
+fn maml_init(): i64 {
+    var K = maml_k(); var Ms = maml_ms(); var Mq = maml_mq();
+    M_W = t_alloc(K); M_b = t_alloc(1);
+    M_Xs = t_alloc(Ms*K); M_Ts = t_alloc(Ms); M_Xq = t_alloc(Mq*K); M_Tq = t_alloc(Mq);
+    M_ys = t_alloc(Ms); M_dy = t_alloc(Ms);
+    M_Wp = t_alloc(K); M_bp = t_alloc(1);
+    M_dWs = t_alloc(K); M_dbs = t_alloc(1);
+    M_gW = t_alloc(K); M_gb = t_alloc(1);
+    M_u = t_alloc(Ms); M_hW = t_alloc(K); M_hb = t_alloc(1);
+    M_dxd = t_alloc(Ms*K);
+    M_oW = t_alloc(K); M_ob = t_alloc(1);
+
+    # init params θ0 = (0.1, 0.1, 0.1; 0.0)
+    var tenth = f64_div(f64_from(1), f64_from(10));
+    store64(M_W + 0*8, tenth); store64(M_W + 1*8, tenth); store64(M_W + 2*8, tenth);
+    store64(M_b, f64_from(0));
+
+    # fixed small synthetic support/query sets (O(1) magnitudes -> precise FD)
+    maml_row(M_Xs, 0, f64_from(1), f64_from(2), f64_from(1));
+    maml_row(M_Xs, 1, f64_from(2), f64_from(1), f64_from(1));
+    maml_row(M_Xs, 2, f64_from(1), f64_from(1), f64_from(2));
+    maml_row(M_Xs, 3, f64_from(2), f64_from(2), f64_from(1));
+    store64(M_Ts+0*8, f64_from(1)); store64(M_Ts+1*8, f64_from(2));
+    store64(M_Ts+2*8, f64_from(1)); store64(M_Ts+3*8, f64_from(2));
+
+    maml_row(M_Xq, 0, f64_from(1), f64_from(1), f64_from(2));
+    maml_row(M_Xq, 1, f64_from(2), f64_from(1), f64_from(1));
+    maml_row(M_Xq, 2, f64_from(1), f64_from(2), f64_from(1));
+    maml_row(M_Xq, 3, f64_from(1), f64_from(1), f64_from(1));
+    store64(M_Tq+0*8, f64_from(2)); store64(M_Tq+1*8, f64_from(1));
+    store64(M_Tq+2*8, f64_from(2)); store64(M_Tq+3*8, f64_from(1));
+    return 0;
+}
+
+# Adapt on the support set (one SGD step): writes θ' into M_Wp/M_bp from the CURRENT θ.
+fn maml_adapt(): i64 {
+    var K = maml_k(); var Ms = maml_ms(); var a = maml_alpha();
+    linear_fwd(M_Xs, M_W, M_b, M_ys, Ms, K, 1);
+    var i = 0;
+    while (i < Ms) {
+        var r = f64_sub(load64(M_ys+i*8), load64(M_Ts+i*8));
+        store64(M_dy+i*8, f64_div(r, f64_from(Ms)));            # dLs/dys = (ys-Ts)/Ms
+        i = i + 1;
+    }
+    t_zero(M_dWs, K); t_zero(M_dbs, 1);
+    linear_bwd(M_Xs, M_W, M_dy, M_dxd, M_dWs, M_dbs, Ms, K, 1);  # dLs/dW, dLs/db
+    var nega = f64_sub(f64_from(0), a);
+    t_copy(M_Wp, M_W, K); t_axpy(M_Wp, M_dWs, nega, K);          # Wp = W - a*dWs
+    store64(M_bp, f64_sub(load64(M_b), f64_mul(a, load64(M_dbs))));
+    return 0;
+}
+
+# meta-loss M(θ) = Lq(θ') = (1/(2Mq)) Σ (Xq·θ' - Tq)^2, using the CURRENT θ.
+fn maml_meta_loss(): i64 {
+    var K = maml_k(); var Mq = maml_mq();
+    maml_adapt();
+    linear_fwd(M_Xq, M_Wp, M_bp, M_ys, Mq, K, 1);
+    var L = f64_from(0); var i = 0;
+    while (i < Mq) {
+        var rq = f64_sub(load64(M_ys+i*8), load64(M_Tq+i*8));
+        L = f64_add(L, f64_mul(rq, rq));
+        i = i + 1;
+    }
+    return f64_div(L, f64_mul(f64_from(2), f64_from(Mq)));
+}
+
+# Full second-order meta-grad -> M_oW/M_ob ; leaves the FOMAML grad in M_gW/M_gb.
+fn maml_meta_grad(): i64 {
+    var K = maml_k(); var Ms = maml_ms(); var Mq = maml_mq(); var a = maml_alpha();
+    maml_adapt();                                               # θ' in M_Wp/M_bp
+    # gθ' = ∇_{θ'} Lq  (query backward at the adapted params)
+    linear_fwd(M_Xq, M_Wp, M_bp, M_ys, Mq, K, 1);
+    var i = 0;
+    while (i < Mq) {
+        var rq = f64_sub(load64(M_ys+i*8), load64(M_Tq+i*8));
+        store64(M_dy+i*8, f64_div(rq, f64_from(Mq)));           # dLq/dyq
+        i = i + 1;
+    }
+    t_zero(M_gW, K); t_zero(M_gb, 1);
+    linear_bwd(M_Xq, M_Wp, M_dy, M_dxd, M_gW, M_gb, Mq, K, 1);  # gW', gb' (= FOMAML grad)
+    # H_s · gθ':  u = Xs·gW + gb ; scale 1/Ms ; (Xsᵀu ; Σu)
+    linear_fwd(M_Xs, M_gW, M_gb, M_u, Ms, K, 1);
+    i = 0; while (i < Ms) { store64(M_u+i*8, f64_div(load64(M_u+i*8), f64_from(Ms))); i = i + 1; }
+    t_zero(M_hW, K); t_zero(M_hb, 1);
+    linear_bwd(M_Xs, M_gW, M_u, M_dxd, M_hW, M_hb, Ms, K, 1);   # hW, hb = H_s·gθ'
+    # meta-grad = gθ' - α·(H_s·gθ')
+    var nega = f64_sub(f64_from(0), a);
+    t_copy(M_oW, M_gW, K); t_axpy(M_oW, M_hW, nega, K);
+    store64(M_ob, f64_sub(load64(M_gb), f64_mul(a, load64(M_hb))));
+    return 0;
+}
+
+# Central finite-difference of dM/dθ_idx (idx in 0..K-1 -> W, idx==K -> b).
+fn maml_fd_grad(idx): i64 {
+    var K = maml_k();
+    var eps = f64_div(f64_from(1), f64_from(100000));            # 1e-5
+    var pp = M_b; if (idx < K) { pp = M_W + idx*8; }
+    var orig = load64(pp);
+    store64(pp, f64_add(orig, eps)); var hi = maml_meta_loss();
+    store64(pp, f64_sub(orig, eps)); var lo = maml_meta_loss();
+    store64(pp, orig);
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+
+fn maml_an_full(idx): i64 { var K = maml_k(); if (idx < K) { return load64(M_oW+idx*8); } return load64(M_ob); }
+fn maml_an_fomaml(idx): i64 { var K = maml_k(); if (idx < K) { return load64(M_gW+idx*8); } return load64(M_gb); }
+
+# Gate: full 2nd-order meta-grad matches FD on every param (call maml_meta_grad first).
+fn maml_gate(): i64 {
+    var K = maml_k(); var ok = 1; var i = 0;
+    while (i < K + 1) {
+        var d = f64_abs(f64_sub(maml_an_full(i), maml_fd_grad(i)));
+        if (f64_le(d, maml_tol()) == 0) { ok = 0; }
+        i = i + 1;
+    }
+    return ok;
+}
+# Second-order term observable: FOMAML differs from FD on at least one param.
+fn maml_2nd_observable(): i64 {
+    var K = maml_k(); var seen = 0; var i = 0;
+    while (i < K + 1) {
+        if (f64_le(maml_tol(), f64_abs(f64_sub(maml_an_fomaml(i), maml_fd_grad(i)))) == 1) { seen = 1; }
+        i = i + 1;
+    }
+    return seen;
+}
