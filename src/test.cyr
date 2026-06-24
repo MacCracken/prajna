@@ -132,6 +132,18 @@ fn main() {
     }
     assert(f64_le(tm_eval(12, 7777, tma), tmb), "M4.b: text MAML reduces held-out few-shot NLL");
 
+    # ---- M5: continual learning — backprop FD-gated; replay prevents forgetting ----
+    ec_init();
+    assert(ec_grad_gate(), "M5: MLP backprop matches finite-diff");
+    var efit = f64_div(f64_from(3), f64_from(10));
+    var eblr = f64_div(f64_from(3), f64_from(100));
+    ec_set_a(); ec_train(2000, efit, 0, f64_from(0));
+    ec_snapshot();
+    ec_reset(); ec_set_b(); ec_train(3000, eblr, 0, f64_from(0));
+    var e_naive = ec_loss_a();
+    ec_reset(); ec_set_ab(); ec_train(3000, eblr, 0, f64_from(0));
+    assert(f64_le(ec_loss_a(), e_naive), "M5: experience replay retains task A better than naive");
+
     return 0;
 }
 

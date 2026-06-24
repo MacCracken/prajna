@@ -15,6 +15,7 @@ include "src/lopt.cyr"              # learned optimizer (BPTT through an unroll)
 include "src/lrnn.cyr"              # recurrent (RNN) learned optimizer (M3.c)
 include "src/text.cyr"             # next-token LM on akshara-tokenized text (M4.a)
 include "src/textmaml.cyr"         # MAML over text shift-tasks (M4.b)
+include "src/ewc.cyr"              # continual-learning durability (EWC) (M5)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -291,10 +292,37 @@ fn main() {
     if (tm_ok == 1) { puts("  RESULT: meta-training improves few-shot TEXT adaptation"); nl(); }
     else            { puts("  RESULT: no improvement"); nl(); }
 
+    # ---- M5: continual learning — naive forgets task A; experience replay retains it ----
+    nl();
+    puts("prajna M5 - continual learning durability: naive forgets A; replay retains it"); nl();
+    ec_init();
+    var eg = ec_grad_gate();
+    if (eg == 1) { puts("  GRAD-GATE: PASS (MLP backprop matches FD on all 25 params)"); nl(); }
+    else         { puts("  GRAD-GATE: FAIL"); nl(); }
+    var afit = f64_div(f64_from(3), f64_from(10));       # A-fit lr 0.3 (fast)
+    var blr = f64_div(f64_from(3), f64_from(100));       # B-phase lr 0.03 (small/stable)
+    ec_set_a(); ec_train(2000, afit, 0, f64_from(0));    # fit task A well
+    ec_snapshot(); ec_fisher();                          # θ*_A + Fisher (for EWC)
+    var a0 = ec_loss_a();
+    ec_reset(); ec_set_b(); ec_train(3000, blr, 0, f64_from(0));         # naive sequential B
+    var a_naive = ec_loss_a(); var b_naive = ec_loss_b();
+    ec_reset(); ec_set_ab(); ec_train(3000, blr, 0, f64_from(0));        # experience replay (A+B)
+    var a_replay = ec_loss_a(); var b_replay = ec_loss_b();
+    ec_reset(); ec_set_b(); ec_train(3000, blr, 1, f64_from(50));        # EWC (Fisher penalty), λ=50
+    var a_ewc = ec_loss_a();
+    puts("  task-A loss after fitting A          = "); print_f6(a0); nl();
+    puts("  task-A loss after naive  B-training  = "); print_f6(a_naive);  puts("  (catastrophic forgetting)"); nl();
+    puts("  task-A loss after REPLAY B-training  = "); print_f6(a_replay); puts("  (retained)"); nl();
+    puts("  task-A loss after EWC    B-training  = "); print_f6(a_ewc);    puts("  (Fisher penalty)"); nl();
+    puts("  task-B loss (naive / replay)         = "); print_f6(b_naive); puts(" / "); print_f6(b_replay); nl();
+    var m5_ok = (eg == 1) && (f64_le(a_replay, a_naive) == 1);
+    if (m5_ok == 1) { puts("  RESULT: experience replay prevents catastrophic forgetting of task A"); nl(); }
+    else            { puts("  RESULT: replay did not retain task A"); nl(); }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
     allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
     allok = allok && (mc_ok==1) && (bench_ok==1) && (lg==1) && (lo_ok==1) && (r_ok==1);
-    allok = allok && (tg==1) && (tm_ok==1);
+    allok = allok && (tg==1) && (tm_ok==1) && (m5_ok==1);
     if (allok) { return 0; }
     return 1;
 }

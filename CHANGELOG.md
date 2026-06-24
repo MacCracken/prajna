@@ -4,6 +4,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **M5 — continual-learning durability (EWC + experience replay)** (`src/ewc.cyr`): the
+  "don't catastrophically forget" safety glue for on-device self-adaptation. A 1→8→1 tanh MLP
+  (backprop **FD-gated on all 25 params**) fits task A, then task B. **Naive** sequential
+  B-training forgets A (loss 0.05 → 0.56); **experience replay** (interleaving A's data) keeps
+  A essentially perfect (→ 0.00006) *and* fits B (0.178) — the robust durability method. **EWC**
+  (diagonal-Fisher quadratic penalty `λF(θ−θ*)`, Kirkpatrick 2017) is implemented + FD-gateable,
+  but reported **honestly as ineffective at this single-layer toy scale** (0.65, ≈ naive — the
+  Fisher concentrates on shared output weights, no useful λ window). Test gates the backprop +
+  the replay retention. **Completes the M1–M5 roadmap.**
+
 ## [0.4.0] — 2026-06-24
 
 M4 — text few-shot meta-learning, the bridge into the ML family. prajna now consumes the

@@ -107,10 +107,20 @@ tokenizer). Sub-split:
 > **▶ M4 SHIPPED as `0.4.0` (2026-06-24).** Text few-shot meta-learning on the shared
 > `akshara` tokenizer — prajna is wired into the ML family's data layer (attn11/tarka/tentib).
 
-### M5 — Continual-learning durability (→ v0.5.0)
-- **EWC** (Fisher penalty) + experience replay so sequential meta-adaptations don't
-  catastrophically forget — the safety glue the self-improvement-lane flags as
-  mandatory for any on-device self-updater.
+### M5 — Continual-learning durability — ✅ landed 2026-06-24 (`src/ewc.cyr`)
+The "don't catastrophically forget" safety glue. A 1→8→1 tanh MLP (backprop FD-gated) fits
+task A, then task B:
+- **Naive** sequential B forgets A (loss 0.05 → 0.56).
+- **Experience replay** (interleaving A's data) retains A essentially perfectly (→ 0.00006)
+  while fitting B (0.178) — the robust durability method.
+- **EWC** (diagonal-Fisher quadratic penalty, Kirkpatrick 2017) implemented + FD-gateable, but
+  **honest-negative at this single-layer toy scale** (0.65, ≈ naive — the Fisher concentrates
+  on shared output weights). Replay is the method that works here.
+
+> **▶ M1–M5 ROADMAP COMPLETE (2026-06-24).** The full meta-learning reference: 2nd-order MAML
+> (scalar→linear→nonlinear R-operator), learned optimizers (feedforward + recurrent BPTT), text
+> few-shot on `akshara`, and continual-learning durability. Remaining: the **v1.0 criteria**
+> (API freeze + docs, benchmarks doc, downstream consumer, security audit) — the freeze cycle.
 
 ## Out of scope (for v1.0)
 

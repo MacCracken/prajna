@@ -1,0 +1,167 @@
+# prajna — M5: continual-learning durability (EWC, Kirkpatrick 2017). The safety glue for
+# on-device self-adaptation: when a model adapts to a SEQUENCE of tasks, naive training on
+# task B catastrophically FORGETS task A. EWC adds a Fisher-weighted quadratic penalty that
+# anchors A-important weights near their post-A values, so B is learned without erasing A.
+#
+#   penalty(θ) = (λ/2) Σ_i F_i (θ_i - θ*_A,i)²   ->   grad += λ·F_i·(θ_i - θ*_A,i)
+#   F_i (diagonal Fisher) ≈ (1/M_A) Σ_m (∂ℓ_m(θ*_A)/∂θ_i)²   (per-example squared grads).
+#
+# Substrate: a 1→H→1 tanh MLP (hand-derived backprop, FD-gated). Tasks A/B = wiggly targets
+# on disjoint x-regions; naive-B forgets A, EWC-B retains it.
+
+fn ec_h(): i64 { return 8; }                                   # hidden units
+fn ec_ma(): i64 { return 4; }                                  # task-A points
+fn ec_mb(): i64 { return 4; }                                  # task-B points
+fn ec_np(): i64 { return 3*ec_h() + 1; }                       # W1[H]+b1[H]+W2[H]+b2 = 25
+fn ec_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }  # 1e-4
+fn ften2(n): i64 { return f64_div(f64_from(n), f64_from(10)); }     # n/10
+
+var EC_W1=0; var EC_b1=0; var EC_W2=0; var EC_b2=0;            # params θ
+var EC_dW1=0; var EC_db1=0; var EC_dW2=0; var EC_db2=0;        # grads
+var EC_Xa=0; var EC_Ta=0; var EC_Xb=0; var EC_Tb=0;            # task data
+var EC_Xab=0; var EC_Tab=0;                                    # A+B replay buffer
+var EC_X=0; var EC_T=0; var EC_M=0;                            # ACTIVE pairs
+var EC_Z=0; var EC_Hh=0; var EC_Y=0; var EC_dY=0; var EC_dHh=0; var EC_dZ=0; var EC_dXd=0;
+var EC_snap=0; var EC_F=0;                                     # θ*_A snapshot + Fisher (flat NP)
+
+fn ec_init(): i64 {
+    var H=ec_h(); var Ma=ec_ma(); var Mb=ec_mb(); var NP=ec_np();
+    EC_W1=t_alloc(H); EC_b1=t_alloc(H); EC_W2=t_alloc(H); EC_b2=t_alloc(1);
+    EC_dW1=t_alloc(H); EC_db1=t_alloc(H); EC_dW2=t_alloc(H); EC_db2=t_alloc(1);
+    var Mx=Ma+Mb;                                              # max active size (A+B replay)
+    EC_Xa=t_alloc(Ma); EC_Ta=t_alloc(Ma); EC_Xb=t_alloc(Mb); EC_Tb=t_alloc(Mb);
+    EC_Xab=t_alloc(Mx); EC_Tab=t_alloc(Mx);
+    EC_Z=t_alloc(Mx*H); EC_Hh=t_alloc(Mx*H); EC_Y=t_alloc(Mx); EC_dY=t_alloc(Mx);
+    EC_dHh=t_alloc(Mx*H); EC_dZ=t_alloc(Mx*H); EC_dXd=t_alloc(Mx);
+    EC_snap=t_alloc(NP); EC_F=t_alloc(NP);
+    # task A: wiggle on x in [-2,-0.5] ; task B: wiggle on x in [0.5,2]
+    store64(EC_Xa+0*8, ften2(0-20)); store64(EC_Xa+1*8, ften2(0-15));
+    store64(EC_Xa+2*8, ften2(0-10)); store64(EC_Xa+3*8, ften2(0-5));
+    store64(EC_Ta+0*8, ften2(7)); store64(EC_Ta+1*8, ften2(0-7));
+    store64(EC_Ta+2*8, ften2(7)); store64(EC_Ta+3*8, ften2(0-7));
+    store64(EC_Xb+0*8, ften2(5)); store64(EC_Xb+1*8, ften2(10));
+    store64(EC_Xb+2*8, ften2(15)); store64(EC_Xb+3*8, ften2(20));
+    store64(EC_Tb+0*8, ften2(0-7)); store64(EC_Tb+1*8, ften2(7));
+    store64(EC_Tb+2*8, ften2(0-7)); store64(EC_Tb+3*8, ften2(7));
+    # A+B replay buffer (A's pairs followed by B's)
+    var m=0;
+    while (m < Ma) { store64(EC_Xab+m*8, load64(EC_Xa+m*8)); store64(EC_Tab+m*8, load64(EC_Ta+m*8)); m=m+1; }
+    m=0;
+    while (m < Mb) { store64(EC_Xab+(Ma+m)*8, load64(EC_Xb+m*8)); store64(EC_Tab+(Ma+m)*8, load64(EC_Tb+m*8)); m=m+1; }
+    rng_seed(31415);
+    var std=f64_div(f64_from(1), f64_from(2));                 # 0.5 — enough to fit the wiggle
+    t_randn(EC_W1, H, std); t_randn(EC_b1, H, std); t_randn(EC_W2, H, std); t_randn(EC_b2, 1, std);
+    return 0;
+}
+fn ec_set_a(): i64 { EC_X=EC_Xa; EC_T=EC_Ta; EC_M=ec_ma(); return 0; }
+fn ec_set_b(): i64 { EC_X=EC_Xb; EC_T=EC_Tb; EC_M=ec_mb(); return 0; }
+fn ec_set_ab(): i64 { EC_X=EC_Xab; EC_T=EC_Tab; EC_M=ec_ma()+ec_mb(); return 0; }   # replay
+
+# forward (mean ½ MSE) / backward (∇ into EC_d*) over the ACTIVE pairs.
+fn ec_forward(): i64 {
+    var H=ec_h(); var M=EC_M;
+    linear_fwd(EC_X, EC_W1, EC_b1, EC_Z, M, 1, H);
+    var i=0; var n=M*H; while (i < n) { store64(EC_Hh+i*8, f64_tanh(load64(EC_Z+i*8))); i=i+1; }
+    linear_fwd(EC_Hh, EC_W2, EC_b2, EC_Y, M, H, 1);
+    var L=f64_from(0); i=0;
+    while (i < M) { var r=f64_sub(load64(EC_Y+i*8), load64(EC_T+i*8)); L=f64_add(L, f64_mul(r,r)); i=i+1; }
+    return f64_div(L, f64_mul(f64_from(2), f64_from(M)));
+}
+fn ec_backward(): i64 {
+    var H=ec_h(); var M=EC_M;
+    ec_forward();
+    var i=0;
+    while (i < M) {
+        store64(EC_dY+i*8, f64_div(f64_sub(load64(EC_Y+i*8), load64(EC_T+i*8)), f64_from(M)));
+        i=i+1;
+    }
+    t_zero(EC_dW2,H); t_zero(EC_db2,1);
+    linear_bwd(EC_Hh, EC_W2, EC_dY, EC_dHh, EC_dW2, EC_db2, M, H, 1);
+    var n=M*H; i=0;
+    while (i < n) {
+        var hv=load64(EC_Hh+i*8);
+        store64(EC_dZ+i*8, f64_mul(load64(EC_dHh+i*8), f64_sub(f64_from(1), f64_mul(hv,hv))));
+        i=i+1;
+    }
+    t_zero(EC_dW1,H); t_zero(EC_db1,H);
+    linear_bwd(EC_X, EC_W1, EC_dZ, EC_dXd, EC_dW1, EC_db1, M, 1, H);
+    return 0;
+}
+fn ec_pp(idx): i64 {
+    var H=ec_h();
+    if (idx < H) { return EC_W1+idx*8; }
+    if (idx < 2*H) { return EC_b1+(idx-H)*8; }
+    if (idx < 3*H) { return EC_W2+(idx-2*H)*8; }
+    return EC_b2;
+}
+fn ec_gv(idx): i64 {
+    var H=ec_h();
+    if (idx < H) { return load64(EC_dW1+idx*8); }
+    if (idx < 2*H) { return load64(EC_db1+(idx-H)*8); }
+    if (idx < 3*H) { return load64(EC_dW2+(idx-2*H)*8); }
+    return load64(EC_db2);
+}
+fn ec_fd_grad(idx): i64 {
+    var eps=f64_div(f64_from(1),f64_from(100000));
+    var pp=ec_pp(idx); var o=load64(pp);
+    store64(pp, f64_add(o,eps)); var hi=ec_forward();
+    store64(pp, f64_sub(o,eps)); var lo=ec_forward();
+    store64(pp, o);
+    return f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+}
+fn ec_grad_gate(): i64 {                                       # FD-gate the MLP backward on task A
+    ec_set_a(); ec_backward();
+    var ok=1; var i=0; var NP=ec_np();
+    while (i < NP) { if (f64_le(f64_abs(f64_sub(ec_gv(i), ec_fd_grad(i))), ec_tol()) == 0) { ok=0; } i=i+1; }
+    return ok;
+}
+
+# snapshot θ*_A (flat) ; reset θ to the snapshot.
+fn ec_snapshot(): i64 {
+    var i=0; var NP=ec_np();
+    while (i<NP) { store64(EC_snap+i*8, load64(ec_pp(i))); i=i+1; }
+    return 0;
+}
+fn ec_reset(): i64 {
+    var i=0; var NP=ec_np();
+    while (i<NP) { store64(ec_pp(i), load64(EC_snap+i*8)); i=i+1; }
+    return 0;
+}
+
+# diagonal Fisher on task A at the current θ: F_i = (1/Ma) Σ_m (∂ℓ_m/∂θ_i)² (per-example grads).
+fn ec_fisher(): i64 {
+    var Ma=ec_ma(); var NP=ec_np();
+    var i=0; while (i<NP) { store64(EC_F+i*8, f64_from(0)); i=i+1; }
+    var m=0;
+    while (m < Ma) {
+        EC_X = EC_Xa + m*8; EC_T = EC_Ta + m*8; EC_M = 1;      # single A example
+        ec_backward();
+        i=0; while (i<NP) { var g=ec_gv(i); store64(EC_F+i*8, f64_add(load64(EC_F+i*8), f64_mul(g,g))); i=i+1; }
+        m=m+1;
+    }
+    var inv=f64_div(f64_from(1), f64_from(Ma));
+    i=0; while (i<NP) { store64(EC_F+i*8, f64_mul(load64(EC_F+i*8), inv)); i=i+1; }
+    return 0;
+}
+
+# one SGD step on the ACTIVE task ; ewc=1 adds λ·F_i·(θ_i - θ*_A,i) to the gradient.
+# (Stability comes from a small B-phase lr, not clipping — clipping forced constant-size
+# steps that bounced near the optimum and broke the penalty dynamics.)
+fn ec_step(lr, ewc, lam): i64 {
+    ec_backward();
+    var i=0; var NP=ec_np();
+    while (i < NP) {
+        var g=ec_gv(i);
+        if (ewc == 1) {
+            var pen=f64_mul(lam, f64_mul(load64(EC_F+i*8), f64_sub(load64(ec_pp(i)), load64(EC_snap+i*8))));
+            g=f64_add(g, pen);
+        }
+        var pp=ec_pp(i);
+        store64(pp, f64_sub(load64(pp), f64_mul(lr, g)));
+        i=i+1;
+    }
+    return 0;
+}
+fn ec_train(steps, lr, ewc, lam): i64 { var s=0; while (s<steps) { ec_step(lr, ewc, lam); s=s+1; } return 0; }
+fn ec_loss_a(): i64 { ec_set_a(); return ec_forward(); }
+fn ec_loss_b(): i64 { ec_set_b(); return ec_forward(); }

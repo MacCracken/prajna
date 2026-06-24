@@ -50,7 +50,10 @@ learned optimizer.) Next: **M5** (continual-learning durability — EWC + replay
 - `src/textmaml.cyr` — **M4.b**: MAML over text shift-tasks on the M4.a LM. `tm_init`,
   `tm_set_support`/`tm_set_query`, `tm_adapt` (inner step), `tm_meta_grad` (FOMAML),
   `tm_query_nll`, `tm_train_step` (gradient-clipped meta-batch), `tm_eval` (held-out NLL).
-- `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.*, per-stage gates. Exit 0 iff all pass.
+- `src/ewc.cyr` — **M5**: continual-learning durability. 1→8→1 tanh MLP (`ec_forward`/
+  `ec_backward`/`ec_grad_gate`); `ec_fisher` (diagonal Fisher), `ec_snapshot`/`ec_reset`,
+  `ec_step` (EWC penalty), `ec_set_ab` (experience replay). Replay = the robust method.
+- `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.* → M5, per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
 
 ## Verification (2026-06-24)
@@ -81,8 +84,10 @@ learned optimizer.) Next: **M5** (continual-learning durability — EWC + replay
 - **M4.a**: next-token LM on akshara-tokenized "hello world" (V=8, M=10 pairs, NLL 2.106 ≈
   ln 8); embedding+head+softmax-xent backprop **matches FD on all 72 params**.
 - **M4.b**: text-MAML over cyclic-shift tasks — held-out 1-step adaptation NLL **2.37 → 0.49**
-  (~79%) over meta-training. Demo run exit 0; `cyrius test` green (all FD gates + M2.c +
-  M3.a/b/c + M4.a/b).
+  (~79%) over meta-training.
+- **M5**: MLP backprop FD-gated (25 params); naive sequential forgets A (0.05→0.56),
+  **experience replay retains A** (→0.00006) + fits B (0.178). EWC honest-negative at toy scale.
+  Demo run exit 0; `cyrius test` green (all FD gates + M2.c + M3.a/b/c + M4.a/b + M5).
 
 ## Dependencies
 
@@ -98,7 +103,7 @@ _None yet._
 
 ## Next
 
-**M5 — continual-learning durability** (→ v0.5.0): EWC (Fisher penalty) + experience replay so
-sequential meta-adaptations don't catastrophically forget — the safety glue the
-self-improvement-lane flags as mandatory for an on-device self-updater. See
-[`roadmap.md`](roadmap.md).
+**The M1–M5 roadmap is COMPLETE.** A `0.5.0` cut (M5) is due. After that, the **v1.0 run**:
+the six v1.0 criteria (API freeze + docs, `docs/benchmarks.md`, ≥1 downstream consumer, security
+audit, CHANGELOG, every backward FD-checked — already met for the gates) — the freeze cycle that
+graduates prajna to a stable reference like tarka 1.0. See [`roadmap.md`](roadmap.md).
