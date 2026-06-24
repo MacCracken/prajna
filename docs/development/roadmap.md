@@ -117,10 +117,30 @@ task A, then task B:
   **honest-negative at this single-layer toy scale** (0.65, ≈ naive — the Fisher concentrates
   on shared output weights). Replay is the method that works here.
 
-> **▶ M1–M5 ROADMAP COMPLETE (2026-06-24).** The full meta-learning reference: 2nd-order MAML
-> (scalar→linear→nonlinear R-operator), learned optimizers (feedforward + recurrent BPTT), text
-> few-shot on `akshara`, and continual-learning durability. Remaining: the **v1.0 criteria**
-> (API freeze + docs, benchmarks doc, downstream consumer, security audit) — the freeze cycle.
+> **▶ M5 SHIPPED as `0.5.0` — M1–M5 ROADMAP COMPLETE (2026-06-24).** The full meta-learning
+> reference: 2nd-order MAML (scalar→linear→nonlinear R-operator), learned optimizers (feedforward
+> + recurrent BPTT), text few-shot on `akshara`, and continual-learning durability.
+
+## 0.6.x — Hardening arc (audit / hardening / security / refactor)
+
+Before the v1.0 freeze: a hardening pass, each theme its own patch. Grounded in the full-codebase
+audit in [`audit-0.6.md`](audit-0.6.md) (key finding: the FD gates are **NaN-blind** — a NaN
+gradient silently *passes*; `f64_le(NaN,x)==1`).
+
+- **0.6.0 — Audit + NaN-safe gates** (fixes audit **N-1**): the audit doc + a finite-guard so
+  every FD gate *fails* on NaN/Inf. The critical correctness fix — a trustworthy harness first.
+- **0.6.1 — Numerical robustness** (**N-2, N-3**): floor `ln`'s arg in softmax-xent; NaN/Inf
+  fail-fast in the training loops (diagnose divergence, don't print `--.------` silently).
+- **0.6.2 — Security / supply-chain** (**S-1, M-1**): threat-model note (no untrusted input,
+  non-crypto PRNG, stubbed loaders); dep-pin audit; `assert`/size-by-max the shared scratch.
+- **0.6.3 — Refactor** (**R-1, R-2, R-3**): extract the shared param-addressing + FD-gate harness
+  (NaN-guard in one place), dedup `ften`, shrink surface before freeze.
+
+## v1.0 criteria (after 0.6.x)
+
+API freeze + `docs/api.md`, a `docs/benchmarks.md`, ≥1 downstream-consumer example, a security
+sign-off, CHANGELOG complete, every hand-derived backward FD-checked (done) — the freeze cycle
+that graduates prajna to a stable reference like tarka 1.0.
 
 ## Out of scope (for v1.0)
 

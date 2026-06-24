@@ -5,10 +5,10 @@
 
 ## Version
 
-**0.4.0** — the text-few-shot milestone (M4), cut 2026-06-24. prajna consumes the shared
-`akshara` tokenizer + runs a tiny next-token LM, and meta-learns to adapt it to a new text
-task in one step (held-out NLL 2.37→0.49). (0.1.0=scaffold+M1; 0.2.0=M2 MAML; 0.3.0=M3
-learned optimizer.) Next: **M5** (continual-learning durability — EWC + replay).
+**0.5.0** — the continual-learning milestone (M5), cut 2026-06-24, **completing the M1–M5
+roadmap**. Sequential adaptation without catastrophic forgetting (experience replay; EWC
+implemented + honest-negative at toy scale). (0.1.0=M1; 0.2.0=M2 MAML; 0.3.0=M3 learned
+optimizer; 0.4.0=M4 text few-shot.) Next: the **v1.0 freeze cycle**.
 
 ## Toolchain
 
@@ -103,7 +103,9 @@ _None yet._
 
 ## Next
 
-**The M1–M5 roadmap is COMPLETE.** A `0.5.0` cut (M5) is due. After that, the **v1.0 run**:
-the six v1.0 criteria (API freeze + docs, `docs/benchmarks.md`, ≥1 downstream consumer, security
-audit, CHANGELOG, every backward FD-checked — already met for the gates) — the freeze cycle that
-graduates prajna to a stable reference like tarka 1.0. See [`roadmap.md`](roadmap.md).
+**The 0.6.x hardening arc** (audit / hardening / security / refactor) — before the v1.0 freeze.
+Grounded in [`audit-0.6.md`](audit-0.6.md). Patches: **0.6.0** audit + NaN-safe gates (the FD
+gates are NaN-blind — a NaN gradient silently *passes* `f64_le(NaN,x)==1`; the critical fix),
+**0.6.1** numerical robustness (ln floor + NaN fail-fast), **0.6.2** security/supply-chain (threat
+model + dep pins + scratch asserts), **0.6.3** refactor (shared param-addressing + gate harness).
+Then the v1.0 freeze cycle. See [`roadmap.md`](roadmap.md).

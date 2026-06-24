@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-24
+
+M5 — continual-learning durability, and the **completion of the M1–M5 roadmap**. prajna is now
+a feature-complete sovereign meta-learning reference: 2nd-order MAML (R-operator), learned
+optimizers (feedforward + recurrent), text few-shot on `akshara`, and forgetting-resistant
+sequential adaptation. Remaining before v1.0: the freeze cycle (API + benchmarks + audit).
+
 ### Added
 - **M5 — continual-learning durability (EWC + experience replay)** (`src/ewc.cyr`): the
   "don't catastrophically forget" safety glue for on-device self-adaptation. A 1→8→1 tanh MLP
