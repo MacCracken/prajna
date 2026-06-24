@@ -7,6 +7,7 @@ include "lib/tyche.cyr"              # rng_* (rosnet's t_randn -> rng_normal; li
 include "lib/rosnet.cyr"            # t_alloc / linear_fwd / linear_bwd / t_axpy ...
 include "src/meta.cyr"               # the scalar meta-gradient core (M1)
 include "src/maml.cyr"               # linear-regression MAML on rosnet (M2.a)
+include "src/mlp.cyr"                # 1-hidden-layer tanh MLP + backprop (M2.b.1)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -96,7 +97,17 @@ fn main() {
     }
     puts("    final     meta_loss="); print_f6(maml_meta_loss()); nl();
 
-    if ((ok == 1) && (obs == 1) && (mok == 1) && (mobs == 1)) { return 0; }
+    # ---- M2.b.1: tanh MLP on rosnet (nonlinear; first-order backprop FD-gated) ----
+    nl();
+    puts("prajna M2.b.1 - tanh MLP on rosnet (K=2,H=3), hand-derived backprop FD-gated"); nl();
+    mlp_init();
+    puts("  support loss Ls = "); print_f6(mlp_forward()); nl();
+    var gok = mlp_grad_gate();
+    if (gok == 1) { puts("  GRAD-GATE: PASS  (analytic ∇Ls matches finite-diff on all 13 params)"); nl(); }
+    else          { puts("  GRAD-GATE: FAIL"); nl(); }
+    puts("  (the θ-dependent Hessian this nonlinearity introduces is M2.b.2's HVP)"); nl();
+
+    if ((ok == 1) && (obs == 1) && (mok == 1) && (mobs == 1) && (gok == 1)) { return 0; }
     return 1;
 }
 

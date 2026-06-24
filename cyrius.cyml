@@ -23,7 +23,7 @@ output = "build/prajna"
 # M2 (MAML few-shot regression) wires rosnet (f64 tensors + linear_fwd/linear_bwd)
 # and tyche (task sampling); akshara joins at the text few-shot milestone.
 [deps]
-stdlib = ["string", "fmt", "alloc", "io", "vec", "str", "syscalls", "assert", "bench", "math"]
+stdlib = ["string", "fmt", "alloc", "io", "vec", "str", "syscalls", "assert", "bench", "math", "ganita"]
 
 # rosnet's t_randn calls tyche's rng_normal — [deps.tyche] is MANDATORY for link
 # even though prajna only calls rosnet's tensor/linear ops directly (tentib pattern).

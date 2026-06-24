@@ -1,0 +1,125 @@
+# prajna — M2.b.1: 1-hidden-layer tanh MLP on rosnet, first-order backward, FD-gated.
+#
+# The first NONLINEAR model in prajna. Its hand-derived backprop is the foundation
+# the M2.b.2 double-backward (the R-operator Hessian-vector product) builds on — once
+# there is a tanh in the loop the support-loss Hessian is θ-DEPENDENT, so the
+# constant-HVP shortcut from M2.a (linear) no longer applies.
+#
+#   Z  = X·W1 + b1        (linear_fwd)         [Ms×H]
+#   Hh = tanh(Z)                                [Ms×H]
+#   Y  = Hh·W2 + b2       (linear_fwd)         [Ms×1]
+#   Ls = (1/(2Ms)) Σ (Y - T)^2
+# backward (hand-derived; rosnet linear_bwd for the matrix products):
+#   dY = (Y-T)/Ms ; (dHh,dW2,db2) = linear_bwd(Hh,W2,dY) ;
+#   dZ = dHh ⊙ (1 - Hh^2) ;  (dW1,db1) = linear_bwd(X,W1,dZ)
+
+fn mlp_k(): i64 { return 2; }                                   # input features
+fn mlp_h(): i64 { return 3; }                                   # hidden units
+fn mlp_ms(): i64 { return 4; }                                  # support examples
+fn mlp_np(): i64 { return mlp_k()*mlp_h() + mlp_h() + mlp_h() + 1; }   # 13 params
+fn mlp_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }    # 1e-4
+fn ften(n): i64 { return f64_div(f64_from(n), f64_from(10)); }         # n/10 as f64
+
+var P_W1 = 0; var P_b1 = 0; var P_W2 = 0; var P_b2 = 0;        # params
+var P_X = 0; var P_T = 0;                                       # support data
+var P_Z = 0; var P_Hh = 0; var P_Y = 0;                         # forward activations
+var P_dY = 0; var P_dHh = 0; var P_dZ = 0;                      # backward scratch
+var P_dW1 = 0; var P_db1 = 0; var P_dW2 = 0; var P_db2 = 0; var P_dXd = 0;   # grads
+
+fn mlp_init(): i64 {
+    var K = mlp_k(); var H = mlp_h(); var Ms = mlp_ms();
+    P_W1 = t_alloc(K*H); P_b1 = t_alloc(H); P_W2 = t_alloc(H); P_b2 = t_alloc(1);
+    P_X = t_alloc(Ms*K); P_T = t_alloc(Ms);
+    P_Z = t_alloc(Ms*H); P_Hh = t_alloc(Ms*H); P_Y = t_alloc(Ms);
+    P_dY = t_alloc(Ms); P_dHh = t_alloc(Ms*H); P_dZ = t_alloc(Ms*H);
+    P_dW1 = t_alloc(K*H); P_db1 = t_alloc(H); P_dW2 = t_alloc(H); P_db2 = t_alloc(1);
+    P_dXd = t_alloc(Ms*K);
+
+    # params (small, varied, deterministic)
+    store64(P_W1+0*8, ften(2)); store64(P_W1+1*8, ften(0-1)); store64(P_W1+2*8, ften(3));
+    store64(P_W1+3*8, ften(0-2)); store64(P_W1+4*8, ften(1)); store64(P_W1+5*8, ften(0-3));
+    store64(P_b1+0*8, ften(1)); store64(P_b1+1*8, ften(0-1)); store64(P_b1+2*8, ften(2));
+    store64(P_W2+0*8, ften(4)); store64(P_W2+1*8, ften(0-3)); store64(P_W2+2*8, ften(2));
+    store64(P_b2, ften(1));
+    # support data
+    store64(P_X+0*8, ften(5)); store64(P_X+1*8, ften(10));
+    store64(P_X+2*8, ften(10)); store64(P_X+3*8, ften(0-5));
+    store64(P_X+4*8, ften(0-5)); store64(P_X+5*8, ften(5));
+    store64(P_X+6*8, ften(10)); store64(P_X+7*8, ften(10));
+    store64(P_T+0*8, ften(3)); store64(P_T+1*8, ften(0-2));
+    store64(P_T+2*8, ften(4)); store64(P_T+3*8, ften(1));
+    return 0;
+}
+
+# forward: fills Z,Hh,Y from the CURRENT params; returns Ls.
+fn mlp_forward(): i64 {
+    var K = mlp_k(); var H = mlp_h(); var Ms = mlp_ms();
+    linear_fwd(P_X, P_W1, P_b1, P_Z, Ms, K, H);
+    var i = 0; var n = Ms*H;
+    while (i < n) { store64(P_Hh+i*8, f64_tanh(load64(P_Z+i*8))); i = i + 1; }
+    linear_fwd(P_Hh, P_W2, P_b2, P_Y, Ms, H, 1);
+    var L = f64_from(0); i = 0;
+    while (i < Ms) {
+        var r = f64_sub(load64(P_Y+i*8), load64(P_T+i*8));
+        L = f64_add(L, f64_mul(r, r)); i = i + 1;
+    }
+    return f64_div(L, f64_mul(f64_from(2), f64_from(Ms)));
+}
+
+# backward: hand-derived ∇Ls into dW1/db1/dW2/db2 (recomputes forward first).
+fn mlp_backward(): i64 {
+    var K = mlp_k(); var H = mlp_h(); var Ms = mlp_ms();
+    mlp_forward();
+    var i = 0;
+    while (i < Ms) {
+        store64(P_dY+i*8, f64_div(f64_sub(load64(P_Y+i*8), load64(P_T+i*8)), f64_from(Ms)));
+        i = i + 1;
+    }
+    t_zero(P_dW2, H); t_zero(P_db2, 1);
+    linear_bwd(P_Hh, P_W2, P_dY, P_dHh, P_dW2, P_db2, Ms, H, 1);   # dHh, dW2, db2
+    var n = Ms*H; i = 0;
+    while (i < n) {                                                # dZ = dHh ⊙ (1 - Hh^2)
+        var h = load64(P_Hh+i*8);
+        var dtanh = f64_sub(f64_from(1), f64_mul(h, h));
+        store64(P_dZ+i*8, f64_mul(load64(P_dHh+i*8), dtanh));
+        i = i + 1;
+    }
+    t_zero(P_dW1, K*H); t_zero(P_db1, H);
+    linear_bwd(P_X, P_W1, P_dZ, P_dXd, P_dW1, P_db1, Ms, K, H);    # dW1, db1 (dX dumped)
+    return 0;
+}
+
+# param/grad addressing: idx 0..KH-1 -> W1 ; KH..KH+H-1 -> b1 ; +H -> W2 ; last -> b2.
+fn mlp_param_ptr(idx): i64 {
+    var KH = mlp_k()*mlp_h(); var H = mlp_h();
+    if (idx < KH) { return P_W1 + idx*8; }
+    if (idx < KH + H) { return P_b1 + (idx-KH)*8; }
+    if (idx < KH + H + H) { return P_W2 + (idx-KH-H)*8; }
+    return P_b2;
+}
+fn mlp_grad_val(idx): i64 {
+    var KH = mlp_k()*mlp_h(); var H = mlp_h();
+    if (idx < KH) { return load64(P_dW1 + idx*8); }
+    if (idx < KH + H) { return load64(P_db1 + (idx-KH)*8); }
+    if (idx < KH + H + H) { return load64(P_dW2 + (idx-KH-H)*8); }
+    return load64(P_db2);
+}
+fn mlp_fd_grad(idx): i64 {
+    var eps = f64_div(f64_from(1), f64_from(100000));            # 1e-5
+    var pp = mlp_param_ptr(idx); var orig = load64(pp);
+    store64(pp, f64_add(orig, eps)); var hi = mlp_forward();
+    store64(pp, f64_sub(orig, eps)); var lo = mlp_forward();
+    store64(pp, orig);
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+
+# Gate: hand-derived ∇Ls matches finite-diff on EVERY param.
+fn mlp_grad_gate(): i64 {
+    mlp_backward();
+    var ok = 1; var i = 0; var NP = mlp_np();
+    while (i < NP) {
+        if (f64_le(f64_abs(f64_sub(mlp_grad_val(i), mlp_fd_grad(i))), mlp_tol()) == 0) { ok = 0; }
+        i = i + 1;
+    }
+    return ok;
+}

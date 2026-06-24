@@ -7,6 +7,7 @@ include "lib/tyche.cyr"
 include "lib/rosnet.cyr"
 include "src/meta.cyr"
 include "src/maml.cyr"
+include "src/mlp.cyr"
 
 fn main() {
     alloc_init();
@@ -31,6 +32,10 @@ fn main() {
     store64(M_b, f64_sub(load64(M_b), f64_mul(mlr, load64(M_ob))));
     var ma = maml_meta_loss();
     assert(f64_le(ma, mb), "M2.a: meta-loss descends under the full meta-gradient");
+
+    # ---- M2.b.1: tanh MLP first-order backprop on rosnet ----
+    mlp_init();
+    assert(mlp_grad_gate(), "M2.b.1: MLP hand-derived backprop matches finite-diff");
 
     return 0;
 }

@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M2.b.1 — 1-hidden-layer tanh MLP on `rosnet`** (`src/mlp.cyr`): prajna's first
+  NONLINEAR model + its hand-derived first-order backprop (`Z=X·W1+b1`, `Hh=tanh(Z)`,
+  `Y=Hh·W2+b2`, MSE; `linear_bwd` for the matrix products, manual `tanh'`). **FD gate
+  matches analytic ∇Ls on all 13 params.** The tanh makes the support Hessian
+  θ-dependent — the foundation for M2.b.2's double-backward (R-operator HVP). Added the
+  `ganita` stdlib module (`f64_tanh`). `cyrius test` now gates M1 + M2.a + M2.b.1.
 - **M2.a — linear-regression MAML on `rosnet`** (`src/maml.cyr`): the second-order
   meta-gradient on actual rosnet tensors with **coupled** parameters (single linear
   layer, K=3→1, MSE, one inner SGD step). The meta-grad `dLq/dθ = gθ' − α·(H_s·gθ')`
