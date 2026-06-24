@@ -1,0 +1,66 @@
+# prajna — meta-gradient core (M1)
+#
+# Proves the family's first SECOND-ORDER meta-gradient: differentiating the
+# query loss THROUGH one inner SGD step (the MAML / learn-to-learn primitive).
+# Everything is raw f64 (stored as i64 bit-patterns), hand-derived, no autodiff.
+#
+# Scalar toy (minimal, exact, finite-difference-gateable):
+#   support loss  Ls(t) = 1/2 * a * (t - u)^2      Ls'(t) = a*(t-u)      Ls''(t) = a
+#   query   loss  Lq(t) = 1/2 * b * (t - v)^2      Lq'(t) = b*(t-v)
+#   inner adapt   t' = t - alpha * Ls'(t)          (one SGD step on the support task)
+#   meta loss     M(t) = Lq(t')
+#   META-GRAD     dM/dt = Lq'(t') * (1 - alpha * Ls''(t))
+#                                   ^^^^^^^^^^^^^^^^^^^^^^^ the SECOND-ORDER term
+# Constants: a=2, u=1, b=1, v=3, alpha=0.1  ->  (1 - alpha*a) = 0.8.
+# FOMAML drops the second-order factor (treats t' as constant w.r.t. t); the gap
+# (1 - alpha*a) = 0.8 vs 1.0 is exactly what makes the 2nd-order term observable.
+
+fn meta_alpha(): i64 { return f64_div(f64_from(1), f64_from(10)); }     # 0.1 (inner step size)
+
+fn ls_grad(t): i64 {                 # Ls'(t) = a*(t-u),  a=2, u=1
+    return f64_mul(f64_from(2), f64_sub(t, f64_from(1)));
+}
+fn lq(t): i64 {                      # Lq(t) = 1/2*b*(t-v)^2, b=1, v=3
+    var d = f64_sub(t, f64_from(3));
+    return f64_mul(f64_div(f64_from(1), f64_from(2)), f64_mul(d, d));
+}
+fn lq_grad(t): i64 {                 # Lq'(t) = b*(t-v) = (t-3)
+    return f64_sub(t, f64_from(3));
+}
+
+fn inner_step(t): i64 {              # t' = t - alpha * Ls'(t)
+    return f64_sub(t, f64_mul(meta_alpha(), ls_grad(t)));
+}
+fn meta_loss(t): i64 {               # M(t) = Lq(inner(t))
+    return lq(inner_step(t));
+}
+
+# Analytic meta-gradient WITH the second-order term: Lq'(t') * (1 - alpha*Ls''),  Ls''=a=2.
+fn meta_grad_full(t): i64 {
+    var second = f64_sub(f64_from(1), f64_mul(meta_alpha(), f64_from(2)));   # 1 - alpha*a
+    return f64_mul(lq_grad(inner_step(t)), second);
+}
+# First-order MAML (FOMAML): drop the (1 - alpha*Ls'') factor.
+fn meta_grad_fomaml(t): i64 {
+    return lq_grad(inner_step(t));
+}
+# Central finite-difference reference for dM/dt (the gate's ground truth).
+fn meta_grad_fd(t): i64 {
+    var eps = f64_div(f64_from(1), f64_from(10000));                          # 1e-4
+    var hi = meta_loss(f64_add(t, eps));
+    var lo = meta_loss(f64_sub(t, eps));
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+
+fn meta_tol(): i64 { return f64_div(f64_from(1), f64_from(100000)); }         # 1e-5
+
+# Gate: the full (2nd-order) meta-grad must match finite differences within tol.
+fn gate_pass(t): i64 {
+    var d = f64_abs(f64_sub(meta_grad_full(t), meta_grad_fd(t)));
+    return f64_le(d, meta_tol());
+}
+# The second-order term is REAL: FOMAML must DIFFER from the FD ground truth by > tol.
+fn second_order_observable(t): i64 {
+    var d = f64_abs(f64_sub(meta_grad_fomaml(t), meta_grad_fd(t)));
+    return f64_le(meta_tol(), d);
+}

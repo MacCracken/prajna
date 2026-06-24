@@ -1,0 +1,26 @@
+[package]
+name = "prajna"
+version = "${file:VERSION}"
+description = "prajna — sovereign meta-learning / learn-to-learn ML reference in Cyrius (the family's first second-order meta-gradient; ∂/∂θ through an inner SGD step)"
+license = "GPL-3.0-only"
+language = "cyrius"
+cyrius = "6.2.39"
+repository = "https://github.com/MacCracken/prajna"
+
+[build]
+entry = "src/main.cyr"
+test = "src/test.cyr"
+output = "build/prajna"
+
+# prajna is a SIBLING reference to attn11 (transformer), tarka (RL/reasoning), and
+# tentib (ternary) on the same f64 substrate. Its thesis is the ONE genuinely-new
+# differentiable primitive the recursive-self-improvement exploration surfaced: a
+# hand-derived SECOND-ORDER meta-gradient — differentiating THROUGH an inner SGD
+# step (MAML / learned-optimizer), the family's first nested grad, FD-gated over a
+# two-level computation.
+#
+# M1 (scalar meta-gradient core) is pure scalar f64 — stdlib "math" only.
+# M2 (MAML few-shot regression) wires rosnet (f64 tensors + linear_fwd/linear_bwd)
+# and tyche (task sampling); akshara joins at the text few-shot milestone.
+[deps]
+stdlib = ["string", "fmt", "alloc", "io", "vec", "str", "syscalls", "assert", "bench", "math"]

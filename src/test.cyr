@@ -1,0 +1,25 @@
+# prajna — top-level test entry (referenced by cyrius.cyml [build].test).
+# M1: gate the scalar second-order meta-gradient against finite differences.
+
+include "lib/syscalls.cyr"
+include "src/meta.cyr"
+
+fn main() {
+    var theta = f64_div(f64_from(1), f64_from(2));      # 0.5
+
+    # (1) the full (2nd-order) meta-grad matches finite differences within tol
+    assert(gate_pass(theta), "meta-grad matches finite-diff (FD gate)");
+
+    # (2) the 2nd-order term is REAL: FOMAML (1st-order) must differ from FD
+    assert(second_order_observable(theta), "FOMAML differs from FD (2nd-order term is real)");
+
+    # (3) one full-meta-grad step reduces the meta-loss (descent direction is correct)
+    var before = meta_loss(theta);
+    var after  = meta_loss(f64_sub(theta, meta_grad_full(theta)));
+    assert(f64_le(after, before), "meta-loss descends under the full meta-gradient");
+
+    return 0;
+}
+
+var r = main();
+syscall(SYS_EXIT, r);
