@@ -17,7 +17,8 @@ fn file_seek(fd, off): i64 { return 0 - 1; }
 # Forward: per row, max-subtract softmax into probs(M*V); returns mean NLL. targets = raw ids.
 fn softmax_xent_fwd(logits, targets, probs, M, V): i64 {
     var total = f64_from(0); var m = 0;
-    while (m < M) {
+    var pfloor = f64_div(f64_from(1), fd_big());          # 1e-18 — floor the target prob so an
+    while (m < M) {                                       # underflow can't make ln(0) = -Inf (audit N-2)
         var row = logits + m*V*8; var prow = probs + m*V*8;
         var mx = load64(row); var i = 1;
         while (i < V) { var lv = load64(row+i*8); if (f64_gt(lv, mx) == 1) { mx = lv; } i = i + 1; }
@@ -29,7 +30,9 @@ fn softmax_xent_fwd(logits, targets, probs, M, V): i64 {
         var inv = f64_div(f64_from(1), sum); i = 0;
         while (i < V) { store64(prow+i*8, f64_mul(load64(prow+i*8), inv)); i = i + 1; }
         var tgt = load64(targets + m*8);
-        total = f64_sub(total, f64_ln(load64(prow + tgt*8)));
+        var pt = load64(prow + tgt*8);
+        if (f64_le(pt, pfloor) == 1) { pt = pfloor; }
+        total = f64_sub(total, f64_ln(pt));
         m = m + 1;
     }
     return f64_div(total, f64_from(M));

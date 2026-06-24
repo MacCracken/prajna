@@ -5,10 +5,10 @@
 
 ## Version
 
-**0.6.0** — first patch of the **0.6.x hardening arc**, cut 2026-06-24: **NaN-safe FD gates**
-(audit N-1). The gates were NaN-blind (`f64_le(NaN,·)==1` → a NaN gradient silently passed);
-now routed through `src/fdgate.cyr`'s finite-guard so non-finite diffs *fail*. (M1–M5 shipped
-0.1.0–0.5.0.) Next: **0.6.1** numerical robustness.
+**0.6.1** — second patch of the **0.6.x hardening arc**, cut 2026-06-24: **numerical robustness**
+(audit N-2, N-3). Floored `ln`'s arg in softmax-xent (no `-Inf` on underflow); `fd_le_finite`
+guards every training-monotonicity check (a diverged NaN result now *fails*); `print_f6` names
+`nan`/`±inf`. (0.6.0 = NaN-safe gates; M1–M5 shipped 0.1.0–0.5.0.) Next: **0.6.2** security/supply-chain.
 
 ## Toolchain
 
@@ -106,8 +106,7 @@ _None yet._
 
 ## Next
 
-**0.6.x hardening arc** (grounded in [`audit-0.6.md`](audit-0.6.md)). **0.6.0 ✅ done** (NaN-safe
-gates). Remaining: **0.6.1** numerical robustness (N-2 ln floor + N-3 NaN fail-fast in training
-loops), **0.6.2** security/supply-chain (S-1 threat model + dep pins, M-1 scratch asserts),
-**0.6.3** refactor (R-1/R-2/R-3 shared param-addressing + gate harness). Then the v1.0 freeze
-cycle. See [`roadmap.md`](roadmap.md).
+**0.6.x hardening arc** (grounded in [`audit-0.6.md`](audit-0.6.md)). **0.6.0 ✅** (NaN-safe
+gates), **0.6.1 ✅** (numerical robustness). Remaining: **0.6.2** security/supply-chain (S-1
+threat model + dep pins, M-1 scratch asserts), **0.6.3** refactor (R-1/R-2/R-3 shared
+param-addressing + gate harness). Then the v1.0 freeze cycle. See [`roadmap.md`](roadmap.md).

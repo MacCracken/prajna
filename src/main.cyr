@@ -22,8 +22,13 @@ fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
 fn nl(): i64 { _putc(10); return 0; }
 
-# print a signed f64 with 6 decimals
+# print a signed f64 with 6 decimals (non-finite values are named, not garbage — audit N-3)
 fn print_f6(val): i64 {
+    if (fd_finite(val) == 0) {
+        if (f64_gt(val, f64_from(0)) == 1) { puts("+inf"); return 0; }
+        if (f64_gt(f64_from(0), val) == 1) { puts("-inf"); return 0; }
+        puts("nan"); return 0;
+    }
     if (((val >> 63) & 1) == 1) { _putc(45); val = f64_abs(val); }   # '-'
     var fl = f64_floor(val);
     fmt_int(f64_to(fl));
@@ -175,7 +180,7 @@ fn main() {
         puts("    @ "); fmt_int((chunk+1)*100); puts(" steps  = "); print_f6(mc_after); nl();
         chunk = chunk + 1;
     }
-    var mc_ok = f64_le(mc_after, mc_before);
+    var mc_ok = fd_le_finite(mc_after, mc_before);
     if (mc_ok == 1) { puts("  RESULT: PASS - meta-training improves few-shot adaptation"); nl(); }
     else            { puts("  RESULT: FAIL - no improvement"); nl(); }
 
@@ -187,7 +192,7 @@ fn main() {
     puts("  final held-out adapt loss, full 2nd-order = "); print_f6(l_full); nl();
     puts("  final held-out adapt loss, FOMAML (1st)   = "); print_f6(l_fom); nl();
     # both must meta-learn (clear gain over the ~2.48 random-init baseline)
-    var bench_ok = (f64_le(l_full, mc_before) == 1) && (f64_le(l_fom, mc_before) == 1);
+    var bench_ok = (fd_le_finite(l_full, mc_before) == 1) && (fd_le_finite(l_fom, mc_before) == 1);
     var diff = f64_abs(f64_sub(l_full, l_fom));
     var tie = f64_div(f64_from(5), f64_from(100));      # 0.05 tie band
     if (f64_le(diff, tie) == 1) {
@@ -235,7 +240,7 @@ fn main() {
     if (f64_le(s4, sgd_best) == 1) { sgd_best = s4; }
     puts("  meta-trained g_phi = "); print_f6(lo_after);
     puts("    best fixed-lr SGD = "); print_f6(sgd_best); nl();
-    var lo_ok = f64_le(lo_after, lo_before);             # meta-training improved the optimizer
+    var lo_ok = fd_le_finite(lo_after, lo_before);       # meta-training improved the optimizer (finite)
     if (f64_le(lo_after, sgd_best) == 1) { puts("  RESULT: learned optimizer beats best fixed-lr SGD"); nl(); }
     else { puts("  RESULT: learned optimizer trains but trails best fixed-lr SGD (honest)"); nl(); }
 
@@ -258,7 +263,7 @@ fn main() {
     var r_after = lr_eval_learned(30, 7777);
     puts("  held-out trajectory loss: untrained "); print_f6(r_before);
     puts(" -> meta-trained "); print_f6(r_after); nl();
-    var r_ok = (rg == 1) && (f64_le(r_after, r_before) == 1);
+    var r_ok = (rg == 1) && (fd_le_finite(r_after, r_before) == 1);
 
     # ---- M4.a: tiny next-token LM on akshara-tokenized text — backprop FD-gated ----
     nl();
@@ -289,7 +294,7 @@ fn main() {
         puts("    @ "); fmt_int((tc+1)*100); puts(" steps = "); print_f6(tm_after); nl();
         tc = tc + 1;
     }
-    var tm_ok = f64_le(tm_after, tm_before);
+    var tm_ok = fd_le_finite(tm_after, tm_before);
     if (tm_ok == 1) { puts("  RESULT: meta-training improves few-shot TEXT adaptation"); nl(); }
     else            { puts("  RESULT: no improvement"); nl(); }
 
@@ -316,7 +321,7 @@ fn main() {
     puts("  task-A loss after REPLAY B-training  = "); print_f6(a_replay); puts("  (retained)"); nl();
     puts("  task-A loss after EWC    B-training  = "); print_f6(a_ewc);    puts("  (Fisher penalty)"); nl();
     puts("  task-B loss (naive / replay)         = "); print_f6(b_naive); puts(" / "); print_f6(b_replay); nl();
-    var m5_ok = (eg == 1) && (f64_le(a_replay, a_naive) == 1);
+    var m5_ok = (eg == 1) && (fd_le_finite(a_replay, a_naive) == 1);
     if (m5_ok == 1) { puts("  RESULT: experience replay prevents catastrophic forgetting of task A"); nl(); }
     else            { puts("  RESULT: replay did not retain task A"); nl(); }
 

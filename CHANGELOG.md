@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-06-24
+
+Second patch of the 0.6.x hardening arc — numerical robustness (audit N-2, N-3).
+
+### Fixed
+- **N-2: `softmax_xent_fwd` floored the `ln` argument.** A target prob that underflows to 0
+  (logit far below the row max → `exp` underflows) gave `ln 0 = −Inf` → NaN loss. The target
+  prob is now floored to 1e-18 before `ln`, so the NLL stays finite. New test: a row with the
+  target logit 1000 below the max yields a finite NLL.
+- **N-3: divergence is now diagnosed, not silently swallowed.** The training-monotonicity
+  checks used bare `f64_le(after, before)`, which (per N-1) returns 1 when `after` is NaN —
+  a diverged run would silently *pass*. New `fd_le_finite` (in `fdgate.cyr`) requires the
+  result to be finite; all 6 training checks in the demo + 6 in the test now use it. `print_f6`
+  prints `nan` / `+inf` / `-inf` instead of the cryptic `--.------`. Negative test:
+  `fd_le_finite(NaN, x) == 0`.
+
 ## [0.6.0] — 2026-06-24
 
 First patch of the 0.6.x hardening arc (audit → NaN-safe gates). See

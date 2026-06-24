@@ -131,8 +131,9 @@ gradient silently *passes*; `f64_le(NaN,x)==1`).
   doc + `src/fdgate.cyr` (`fd_finite`/`fd_match`/`fd_exceeds` via NaN-safe `f64_gt`). All 9 gates
   + 3 observables routed through it; a NaN/Inf gradient now *fails* the gate (was: silently
   passed). Negative test asserts the rejection; all M1–M5 gates stay green.
-- **0.6.1 — Numerical robustness** (**N-2, N-3**): floor `ln`'s arg in softmax-xent; NaN/Inf
-  fail-fast in the training loops (diagnose divergence, don't print `--.------` silently).
+- **0.6.1 — Numerical robustness — ✅ landed 2026-06-24** (**N-2, N-3**): floored `ln`'s arg in
+  softmax-xent (no `-Inf` on underflow); `fd_le_finite` guards all 12 training-monotonicity
+  checks (a diverged NaN result now *fails* instead of passing); `print_f6` names `nan`/`±inf`.
 - **0.6.2 — Security / supply-chain** (**S-1, M-1**): threat-model note (no untrusted input,
   non-crypto PRNG, stubbed loaders); dep-pin audit; `assert`/size-by-max the shared scratch.
 - **0.6.3 — Refactor** (**R-1, R-2, R-3**): extract the shared param-addressing + FD-gate harness

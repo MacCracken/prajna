@@ -34,6 +34,14 @@ fn main() {
     assert(fd_match(f64_from(3), f64_from(3), fg_tol), "fdgate: equal values match");
     assert(fd_match(fg_nan, f64_from(3), fg_tol) == 0, "fdgate: NaN gradient FAILS the gate (was: passed)");
     assert(fd_match(fg_inf, f64_from(3), fg_tol) == 0, "fdgate: Inf gradient FAILS the gate");
+    # N-3: a diverged (NaN) training result must FAIL the monotonicity check (not silently pass)
+    assert(fd_le_finite(f64_from(1), f64_from(2)), "fdgate: finite a<=b passes fd_le_finite");
+    assert(fd_le_finite(fg_nan, f64_from(2)) == 0, "fdgate N-3: NaN result FAILS fd_le_finite");
+    # N-2: softmax cross-entropy stays finite even when the target prob underflows (ln floored)
+    var n2lg = t_alloc(3); var n2pr = t_alloc(3); var n2tg = t_alloc(1);
+    store64(n2lg+0*8, f64_from(1000)); store64(n2lg+1*8, f64_from(0)); store64(n2lg+2*8, f64_from(0));
+    store64(n2tg, 2);                                    # target prob = exp(0-1000) -> underflows to 0
+    assert(fd_finite(softmax_xent_fwd(n2lg, n2tg, n2pr, 1, 3)), "N-2: softmax-xent NLL finite on underflow");
 
     # ---- M1: scalar meta-gradient ----
     var theta = f64_div(f64_from(1), f64_from(2));      # 0.5
@@ -83,7 +91,7 @@ fn main() {
         while (ss < 100) { sine_train_batch_step(12, f64_div(f64_from(5), f64_from(100))); ss = ss + 1; }
         ch = ch + 1;
     }
-    assert(f64_le(sine_eval(10, 7777), mcb), "M2.c.2: meta-training reduces held-out adapt loss");
+    assert(fd_le_finite(sine_eval(10, 7777), mcb), "M2.c.2: meta-training reduces held-out adapt loss");
 
     # ---- M2.c.3: the FOMAML (first-order) training path also meta-learns ----
     nm_config(1, 16, 6, 6);
@@ -93,7 +101,7 @@ fn main() {
     rng_seed(2002);
     var fs = 0;
     while (fs < 150) { sine_train_batch_step_m(12, f64_div(f64_from(5), f64_from(100)), 0); fs = fs + 1; }
-    assert(f64_le(sine_eval(8, 7777), fb), "M2.c.3: FOMAML meta-training also reduces held-out loss");
+    assert(fd_le_finite(sine_eval(8, 7777), fb), "M2.c.3: FOMAML meta-training also reduces held-out loss");
 
     # ---- M3.a: learned-optimizer BPTT meta-gradient ----
     lo_init();
@@ -110,8 +118,8 @@ fn main() {
         loc = loc + 1;
     }
     var loa = lo_eval_learned(15, 7777);
-    assert(f64_le(loa, lob), "M3.b: meta-training improves the learned optimizer");
-    assert(f64_le(loa, lo_eval_sgd(15, 7777, f64_div(f64_from(3), f64_from(10)))),
+    assert(fd_le_finite(loa, lob), "M3.b: meta-training improves the learned optimizer");
+    assert(fd_le_finite(loa, lo_eval_sgd(15, 7777, f64_div(f64_from(3), f64_from(10)))),
            "M3.b: learned optimizer beats fixed-lr SGD");
 
     # ---- M3.c: recurrent-optimizer two-recurrence BPTT + meta-train ----
@@ -126,7 +134,7 @@ fn main() {
         while (rcs < 100) { lr_train_step_batch(12, f64_div(f64_from(1), f64_from(100))); rcs = rcs + 1; }
         rci = rci + 1;
     }
-    assert(f64_le(lr_eval_learned(15, 7777), rcb), "M3.c: recurrent optimizer meta-trains (loss drops)");
+    assert(fd_le_finite(lr_eval_learned(15, 7777), rcb), "M3.c: recurrent optimizer meta-trains (loss drops)");
 
     # ---- M4.a: next-token LM on akshara-tokenized text — backprop FD-gated ----
     tx_init("hello world", 11, 4);
@@ -143,7 +151,7 @@ fn main() {
         while (tms < 100) { tm_train_step(16, f64_div(f64_from(2), f64_from(10)), tma); tms = tms + 1; }
         tmc = tmc + 1;
     }
-    assert(f64_le(tm_eval(12, 7777, tma), tmb), "M4.b: text MAML reduces held-out few-shot NLL");
+    assert(fd_le_finite(tm_eval(12, 7777, tma), tmb), "M4.b: text MAML reduces held-out few-shot NLL");
 
     # ---- M5: continual learning — backprop FD-gated; replay prevents forgetting ----
     ec_init();
@@ -155,7 +163,7 @@ fn main() {
     ec_reset(); ec_set_b(); ec_train(3000, eblr, 0, f64_from(0));
     var e_naive = ec_loss_a();
     ec_reset(); ec_set_ab(); ec_train(3000, eblr, 0, f64_from(0));
-    assert(f64_le(ec_loss_a(), e_naive), "M5: experience replay retains task A better than naive");
+    assert(fd_le_finite(ec_loss_a(), e_naive), "M5: experience replay retains task A better than naive");
 
     return 0;
 }

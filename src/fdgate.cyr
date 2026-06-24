@@ -34,3 +34,11 @@ fn fd_exceeds(analytic, fd, tol): i64 {
     if (fd_finite(d) == 0) { return 0; }
     return f64_le(tol, f64_abs(d));
 }
+
+# NaN-safe "a <= b": 1 iff a is FINITE and a <= b. For training-monotonicity checks — a
+# diverged (NaN) result would pass a bare f64_le (f64_le(NaN,x)==1), silently hiding the
+# blow-up; this fails instead (audit N-3).
+fn fd_le_finite(a, b): i64 {
+    if (fd_finite(a) == 0) { return 0; }
+    return f64_le(a, b);
+}
