@@ -4,7 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-24
+
+M3 — the learned optimizer: meta-learn the *update rule* itself (not an initialization),
+via BPTT through an unrolled optimization. Feedforward and recurrent optimizers, both
+hand-derived and FD-gated; the meta-trained optimizer beats hand-tuned SGD.
+
 ### Added
+- **M3.c — recurrent (RNN) learned optimizer** (`src/lrnn.cyr`): the Andrychowicz canonical —
+  the optimizer carries a **hidden state across optimization steps** (a vanilla-RNN cell;
+  the LSTM is the same idea with gates). The meta-gradient now needs BPTT through **two
+  coupled recurrences** — the θ-trajectory `D_t` *and* the optimizer state `ds` (carried back
+  via `dsf = Wsᵀ·da`). Hand-derived, **FD-gated on all 29 params** (first build); meta-trains
+  to **0.085** held-out loss — beating the feedforward optimizer (0.096) and SGD (0.107), the
+  recurrence buying extra expressiveness. Test gates the BPTT + the meta-training.
 - **M3.b — meta-train the learned optimizer; it beats hand-tuned SGD** (`src/lopt.cyr`):
   meta-train `g_φ` (meta-batch SGD over the BPTT grad, **element-wise gradient clipping** for
   stability) across sampled quadratic optimizees (curvature `a∈[0.5,2.5]`, target `c∈[-2,2]`).

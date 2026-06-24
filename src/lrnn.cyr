@@ -1,0 +1,209 @@
+# prajna — M3.c: RECURRENT learned optimizer (Andrychowicz 2016's canonical form). Where
+# M3.a/b's optimizer is feedforward (update = g_φ(grad)), here g_φ carries a HIDDEN STATE s
+# across the optimization steps — it can use gradient history (momentum / adaptive-lr-like
+# behaviour). A vanilla-RNN cell (the LSTM is the same idea with gates):
+#   grad_t = ∇ℓ(θ_t) ;  s_t = tanh(Ws·s_{t-1} + wg·grad_t + bs) ;  u_t = wu·s_t + bu
+#   θ_{t+1} = θ_t + u_t ;  s_{-1}=0 ;  ℓ(θ)=½a(θ-c)²  (optimizee shared with lopt.cyr).
+#
+# The meta-grad ∂L/∂φ now needs BPTT through TWO coupled recurrences — the θ-trajectory
+# (D_t = ∂L/∂θ_t) AND the optimizer state (ds carried back via dsf = Wsᵀ·da). Reverse step t:
+#   du = D_{t+1} ;  ds = dsf + wu·du ;  da = ds⊙(1-s_t²) ;
+#   dwu += s_t·du ; dbu += du ; dbs += da ; dwg += da·grad_t ; dWs += da⊗s_{t-1} ;
+#   dg = Σ wg·da ;  dsf' = Wsᵀ·da ;  D_t = D_{t+1} + dg·a + [t≥1]·a(θ_t-c).
+# FD-gated over all 29 optimizer params. (Reads the optimizee a/c/θ0 + sampler from lopt.cyr.)
+
+fn lr_hs(): i64 { return 4; }                                  # optimizer state size
+fn lr_t(): i64 { return 8; }                                   # unroll length
+fn lr_np(): i64 { var H=lr_hs(); return H*H + H + H + H + 1; } # 29 (Ws,wg,bs,wu,bu)
+fn lr_tol(): i64 { return f64_div(f64_from(1), f64_from(1000)); }  # 1e-3
+
+var LR_Ws=0; var LR_wg=0; var LR_bs=0; var LR_wu=0; var LR_bu=0;       # φ
+var LR_dWs=0; var LR_dwg=0; var LR_dbs=0; var LR_dwu=0; var LR_dbu=0;  # ∂L/∂φ
+var LR_th=0; var LR_g=0; var LR_s=0;                                   # caches: θ_0..T, grad_t, s_t
+var LR_sp=0; var LR_ds=0; var LR_da=0; var LR_dsf=0; var LR_dsn=0;     # bwd scratch
+var LR_acc=0;                                                          # meta-batch grad acc
+
+fn lr_init(): i64 {
+    var H=lr_hs(); var T=lr_t();
+    LR_Ws=t_alloc(H*H); LR_wg=t_alloc(H); LR_bs=t_alloc(H); LR_wu=t_alloc(H); LR_bu=t_alloc(1);
+    LR_dWs=t_alloc(H*H); LR_dwg=t_alloc(H); LR_dbs=t_alloc(H); LR_dwu=t_alloc(H); LR_dbu=t_alloc(1);
+    LR_th=t_alloc(T+1); LR_g=t_alloc(T); LR_s=t_alloc(T*H);
+    LR_sp=t_alloc(H); LR_ds=t_alloc(H); LR_da=t_alloc(H); LR_dsf=t_alloc(H); LR_dsn=t_alloc(H);
+    LR_acc=t_alloc(lr_np());
+    # small fixed φ init (stable untrained unroll)
+    var i=0; var n=H*H;
+    while (i < n) { store64(LR_Ws+i*8, f64_div(f64_from(((i*5+1)%7)-3), f64_from(20))); i=i+1; }  # ~[-0.15,0.15]
+    i=0; while (i < H) {
+        store64(LR_wg+i*8, ften(1)); store64(LR_bs+i*8, ften(0));
+        store64(LR_wu+i*8, f64_div(f64_from(1), f64_from(10))); i=i+1;
+    }
+    store64(LR_bu, ften(0));
+    return 0;
+}
+
+# Forward unroll: caches θ/grad/s; returns L = Σ_{t=1}^T ℓ(θ_t). Reads LO_a/LO_c/LO_th0.
+fn lr_forward(): i64 {
+    var H=lr_hs(); var T=lr_t();
+    store64(LR_th, LO_th0);
+    t_zero(LR_sp, H);                                          # s_{-1} = 0
+    var L=f64_from(0); var t=0;
+    while (t < T) {
+        var th = load64(LR_th + t*8);
+        var g = f64_mul(LO_a, f64_sub(th, LO_c)); store64(LR_g + t*8, g);
+        var sp = LR_s + t*H*8;                                 # s_t cache row
+        var j=0;
+        while (j < H) {                                        # s_t = tanh(Ws·s_{prev} + wg·g + bs)
+            var a = f64_add(load64(LR_bs+j*8), f64_mul(load64(LR_wg+j*8), g));
+            var k=0; while (k < H) { a = f64_add(a, f64_mul(load64(LR_Ws+(j*H+k)*8), load64(LR_sp+k*8))); k=k+1; }
+            store64(sp+j*8, f64_tanh(a)); j=j+1;
+        }
+        var u = load64(LR_bu);                                 # u = wu·s_t + bu
+        j=0; while (j < H) { u = f64_add(u, f64_mul(load64(LR_wu+j*8), load64(sp+j*8))); j=j+1; }
+        var thn = f64_add(th, u); store64(LR_th + (t+1)*8, thn);
+        var e = f64_sub(thn, LO_c);
+        L = f64_add(L, f64_mul(f64_div(LO_a, f64_from(2)), f64_mul(e, e)));
+        t_copy(LR_sp, sp, H);                                  # s_prev <- s_t
+        t = t + 1;
+    }
+    return L;
+}
+
+# BPTT meta-grad ∂L/∂φ into LR_d*.
+fn lr_meta_grad(): i64 {
+    var H=lr_hs(); var T=lr_t();
+    lr_forward();
+    t_zero(LR_dWs,H*H); t_zero(LR_dwg,H); t_zero(LR_dbs,H); t_zero(LR_dwu,H); t_zero(LR_dbu,1);
+    var dth = f64_mul(LO_a, f64_sub(load64(LR_th + T*8), LO_c));   # D_T
+    t_zero(LR_dsf, H);                                         # no future state-grad at t=T-1
+    var t = T - 1;
+    while (t >= 0) {
+        var sp = LR_s + t*H*8;                                 # s_t
+        var du = dth;                                          # ∂L/∂u_t = D_{t+1}
+        # ds = dsf + wu·du ;  dwu += s_t·du ; dbu += du
+        var j=0;
+        while (j < H) {
+            store64(LR_ds+j*8, f64_add(load64(LR_dsf+j*8), f64_mul(load64(LR_wu+j*8), du)));
+            store64(LR_dwu+j*8, f64_add(load64(LR_dwu+j*8), f64_mul(load64(sp+j*8), du)));
+            j=j+1;
+        }
+        store64(LR_dbu, f64_add(load64(LR_dbu), du));
+        # da = ds ⊙ (1 - s_t²)
+        j=0;
+        while (j < H) {
+            var sv=load64(sp+j*8);
+            store64(LR_da+j*8, f64_mul(load64(LR_ds+j*8), f64_sub(f64_from(1), f64_mul(sv,sv))));
+            j=j+1;
+        }
+        # a_t = Ws·s_{t-1} + wg·grad_t + bs:  dbs+=da; dwg+=da·g; dWs+=da⊗s_{t-1}; dg=Σwg·da; dsf'=Wsᵀ·da
+        var g = load64(LR_g + t*8);
+        j=0;
+        while (j < H) {
+            store64(LR_dbs+j*8, f64_add(load64(LR_dbs+j*8), load64(LR_da+j*8)));
+            store64(LR_dwg+j*8, f64_add(load64(LR_dwg+j*8), f64_mul(load64(LR_da+j*8), g)));
+            j=j+1;
+        }
+        # dWs[j][k] += da[j]·s_{t-1}[k]
+        j=0;
+        while (j < H) {
+            var daj = load64(LR_da+j*8);
+            var k=0;
+            while (k < H) {
+                var sprevk = f64_from(0);
+                if (t >= 1) { sprevk = load64(LR_s + ((t-1)*H+k)*8); }
+                store64(LR_dWs+(j*H+k)*8, f64_add(load64(LR_dWs+(j*H+k)*8), f64_mul(daj, sprevk)));
+                k=k+1;
+            }
+            j=j+1;
+        }
+        var dg = f64_from(0);
+        j=0; while (j < H) { dg = f64_add(dg, f64_mul(load64(LR_wg+j*8), load64(LR_da+j*8))); j=j+1; }
+        # dsf' = Wsᵀ·da :  dsn[k] = Σ_j Ws[j][k]·da[j]
+        var k2=0;
+        while (k2 < H) {
+            var acc = f64_from(0);
+            j=0; while (j < H) { acc = f64_add(acc, f64_mul(load64(LR_Ws+(j*H+k2)*8), load64(LR_da+j*8))); j=j+1; }
+            store64(LR_dsn+k2*8, acc); k2=k2+1;
+        }
+        # D_t = D_{t+1} + dg·a + [t≥1]·a(θ_t-c)
+        dth = f64_add(dth, f64_mul(dg, LO_a));
+        if (t >= 1) { dth = f64_add(dth, f64_mul(LO_a, f64_sub(load64(LR_th + t*8), LO_c))); }
+        t_copy(LR_dsf, LR_dsn, H);                             # carry state-grad to t-1
+        t = t - 1;
+    }
+    return 0;
+}
+
+# param/grad addressing: Ws[H*H], wg[H], bs[H], wu[H], bu
+fn lr_pp(idx): i64 {
+    var H=lr_hs(); var n=H*H;
+    if (idx < n) { return LR_Ws + idx*8; }
+    if (idx < n+H) { return LR_wg + (idx-n)*8; }
+    if (idx < n+2*H) { return LR_bs + (idx-n-H)*8; }
+    if (idx < n+3*H) { return LR_wu + (idx-n-2*H)*8; }
+    return LR_bu;
+}
+fn lr_gv(idx): i64 {
+    var H=lr_hs(); var n=H*H;
+    if (idx < n) { return load64(LR_dWs + idx*8); }
+    if (idx < n+H) { return load64(LR_dwg + (idx-n)*8); }
+    if (idx < n+2*H) { return load64(LR_dbs + (idx-n-H)*8); }
+    if (idx < n+3*H) { return load64(LR_dwu + (idx-n-2*H)*8); }
+    return load64(LR_dbu);
+}
+fn lr_fd(idx): i64 {
+    var eps = f64_div(f64_from(1), f64_from(100000));
+    var pp = lr_pp(idx); var o = load64(pp);
+    store64(pp, f64_add(o, eps)); var hi = lr_forward();
+    store64(pp, f64_sub(o, eps)); var lo = lr_forward();
+    store64(pp, o);
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+fn lr_gate(): i64 {
+    lr_meta_grad();
+    var ok=1; var i=0; var NP=lr_np();
+    while (i < NP) {
+        if (f64_le(f64_abs(f64_sub(lr_gv(i), lr_fd(i))), lr_tol()) == 0) { ok = 0; }
+        i = i + 1;
+    }
+    return ok;
+}
+
+# --- M3.c demo: meta-train the recurrent optimizer (gradient-clipped meta-batch SGD) ---
+fn lr_cached_loss(): i64 {
+    var T=lr_t(); var L=f64_from(0); var t=1;
+    while (t <= T) {
+        var e=f64_sub(load64(LR_th+t*8), LO_c);
+        L=f64_add(L, f64_mul(f64_div(LO_a, f64_from(2)), f64_mul(e, e)));
+        t=t+1;
+    }
+    return L;
+}
+fn lr_train_step_batch(B, mlr): i64 {
+    var NP=lr_np();
+    var j=0; while (j < NP) { store64(LR_acc+j*8, f64_from(0)); j=j+1; }
+    var Lsum=f64_from(0); var b=0;
+    while (b < B) {
+        lo_sample_task();                                     # shared optimizee sampler
+        lr_meta_grad();
+        Lsum = f64_add(Lsum, lr_cached_loss());
+        j=0; while (j < NP) { store64(LR_acc+j*8, f64_add(load64(LR_acc+j*8), lr_gv(j))); j=j+1; }
+        b = b + 1;
+    }
+    var C = f64_from(1);
+    j=0;
+    while (j < NP) {
+        var gav = f64_div(load64(LR_acc+j*8), f64_from(B));
+        if (f64_le(gav, f64_sub(f64_from(0), C)) == 1) { gav = f64_sub(f64_from(0), C); }
+        if (f64_le(C, gav) == 1) { gav = C; }
+        var pp = lr_pp(j);
+        store64(pp, f64_sub(load64(pp), f64_mul(mlr, gav)));
+        j = j + 1;
+    }
+    return f64_div(Lsum, f64_from(B));
+}
+fn lr_eval_learned(ntasks, seed): i64 {
+    rng_seed(seed);
+    var acc=f64_from(0); var i=0;
+    while (i < ntasks) { lo_sample_task(); acc = f64_add(acc, lr_forward()); i = i + 1; }
+    return f64_div(acc, f64_from(ntasks));
+}

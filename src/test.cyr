@@ -11,6 +11,7 @@ include "src/mlp.cyr"
 include "src/mamlnl.cyr"
 include "src/sine.cyr"
 include "src/lopt.cyr"
+include "src/lrnn.cyr"
 
 fn main() {
     alloc_init();
@@ -93,6 +94,20 @@ fn main() {
     assert(f64_le(loa, lob), "M3.b: meta-training improves the learned optimizer");
     assert(f64_le(loa, lo_eval_sgd(15, 7777, f64_div(f64_from(3), f64_from(10)))),
            "M3.b: learned optimizer beats fixed-lr SGD");
+
+    # ---- M3.c: recurrent-optimizer two-recurrence BPTT + meta-train ----
+    lo_set_task(f64_from(1), f64_from(2), f64_from(0));
+    lr_init();
+    assert(lr_gate(), "M3.c: recurrent-optimizer BPTT matches finite-diff");
+    var rcb = lr_eval_learned(15, 7777);
+    var rci = 0;
+    while (rci < 3) {
+        rng_seed(4000 + rci);
+        var rcs = 0;
+        while (rcs < 100) { lr_train_step_batch(12, f64_div(f64_from(1), f64_from(100))); rcs = rcs + 1; }
+        rci = rci + 1;
+    }
+    assert(f64_le(lr_eval_learned(15, 7777), rcb), "M3.c: recurrent optimizer meta-trains (loss drops)");
 
     return 0;
 }

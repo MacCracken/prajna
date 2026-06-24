@@ -81,9 +81,15 @@ gradient descent by gradient descent", Andrychowicz 2016). Sub-split:
   meta-train `φ` (meta-batch SGD over the BPTT grad, **gradient-clipped** for stability) across
   sampled quadratics. Held-out trajectory loss **23.1 → 0.096**; the meta-trained optimizer
   **beats the best fixed-lr SGD** (0.096 vs 0.107) — genuine "learning to learn." Test asserts
-  the improvement + the SGD-beat. **M3 core complete (a+b).**
-- **M3.c** (optional, deferred): scale to multi-coordinate optimizees / a recurrent (LSTM)
-  optimizer — the Andrychowicz canonical. Not required for the M3 thesis (already proven).
+  the improvement + the SGD-beat.
+- **M3.c — recurrent (RNN) optimizer — ✅ landed 2026-06-24** (`src/lrnn.cyr`): the Andrychowicz
+  canonical — a hidden state carried across optimization steps (vanilla-RNN cell; LSTM = same
+  idea + gates). Meta-grad via BPTT through **two coupled recurrences** (θ-trajectory `D` +
+  state `ds`). **FD-gated on all 29 params** (first build); meta-trains to **0.085**, beating
+  both the feedforward optimizer (0.096) and SGD (0.107). **M3 complete.**
+
+> **▶ M3 SHIPPED as `0.3.0` (2026-06-24).** Meta-learning the update rule — feedforward and
+> recurrent learned optimizers, hand-derived BPTT, FD-gated, beating hand-tuned SGD.
 
 ### M4 — Text few-shot / attn11 tie-in (→ v0.4.0)
 - **Dep gate**: add `akshara` (tokenizer). Meta-learn over a tiny LM few-shot task —

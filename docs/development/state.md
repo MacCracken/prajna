@@ -5,9 +5,10 @@
 
 ## Version
 
-**0.2.0** — the MAML milestone (M1 + M2), cut 2026-06-24. The second-order meta-gradient
-proven scalar → linear → nonlinear (R-operator) + demonstrated on sine few-shot
-meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
+**0.3.0** — the learned-optimizer milestone (M3), cut 2026-06-24. Meta-learn the *update
+rule* (feedforward + recurrent learned optimizers) via BPTT through an unrolled optimization;
+hand-derived, FD-gated, beats hand-tuned SGD. (0.1.0 = scaffold+M1; 0.2.0 = M2 MAML.) Next:
+**M4** (text few-shot, adds `akshara`).
 
 ## Toolchain
 
@@ -35,11 +36,14 @@ meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
   `sine_sanity` (3 FD gates at the sine config — generalization); **M2.c.2/.3**: `sine_eval`,
   `sine_opt_init`, `sine_train_batch_step_m(full)` (meta-batch SGD; full or FOMAML),
   `sine_benchmark`. `nm_set_alpha` makes the inner lr configurable.
-- `src/lopt.cyr` — **M3.a/.b**: learned optimizer (1→6→1 tanh `g_φ`, gradient→update) unrolled
-  8 steps on a quadratic optimizee. **M3.a**: `lo_forward`, `lo_meta_grad` (BPTT `∂L/∂φ`),
-  `lo_gate` (FD over 19 params). **M3.b**: `lo_sample_task`, `lo_train_step_batch` (meta-batch
-  + gradient-clipped SGD), `lo_eval_learned`, `lo_sgd_unroll`/`lo_eval_sgd` (vanilla-SGD
-  baseline). The 2nd realization of learn-to-learn (meta-learn the *update rule*).
+- `src/lopt.cyr` — **M3.a/.b**: feedforward learned optimizer (1→6→1 tanh `g_φ`,
+  gradient→update) unrolled 8 steps on a quadratic optimizee. `lo_forward`/`lo_meta_grad` (BPTT)
+  /`lo_gate` (FD over 19 params); `lo_sample_task`/`lo_train_step_batch` (gradient-clipped
+  meta-batch SGD)/`lo_eval_learned`/`lo_eval_sgd` (SGD baseline).
+- `src/lrnn.cyr` — **M3.c**: recurrent (RNN) learned optimizer — hidden state across steps;
+  `lr_forward`/`lr_meta_grad` (two-recurrence BPTT)/`lr_gate` (FD over 29 params); reuses
+  `lopt.cyr`'s optimizee + sampler. The 2nd realization of learn-to-learn (meta-learn the
+  *update rule*), feedforward + recurrent.
 - `src/main.cyr` — demo: M1 → M2.* → M3.a, per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
 
@@ -65,8 +69,10 @@ meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
 - **M3.a**: learned-optimizer BPTT meta-grad **matches FD on all 19 optimizer params**
   (untrained unroll L=32.47, T=8).
 - **M3.b**: meta-training drops held-out trajectory loss **23.1 → 0.096**; the meta-trained
-  optimizer **beats the best fixed-lr SGD** (0.096 vs 0.107). Demo run exit 0 (all gates +
-  results); `cyrius test` green (all FD gates + M2.c + M3.a BPTT + M3.b improves & beats-SGD).
+  optimizer **beats the best fixed-lr SGD** (0.096 vs 0.107).
+- **M3.c**: recurrent-optimizer two-recurrence BPTT **matches FD on all 29 params**;
+  meta-trains to **0.085** — beating feedforward (0.096) and SGD (0.107). Demo run exit 0
+  (all gates + results); `cyrius test` green (all FD gates + M2.c + M3.a/b/c).
 
 ## Dependencies
 
@@ -82,7 +88,6 @@ _None yet._
 
 ## Next
 
-**M3 core is complete (a + b).** Options: **M3.c** (optional — scale to multi-coordinate /
-a recurrent LSTM optimizer, the Andrychowicz canonical; not required for the thesis) or
-move to **M4** (text few-shot, adds the `akshara` tokenizer). User's call. See
-[`roadmap.md`](roadmap.md).
+**M4 — text few-shot / attn11 tie-in** (→ v0.4.0): add the `akshara` tokenizer; meta-learn
+over a tiny LM few-shot task — the bridge into the rest of the ML family (attn11/tarka share
+the tokenizer). See [`roadmap.md`](roadmap.md).
