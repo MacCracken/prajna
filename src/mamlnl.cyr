@@ -60,7 +60,8 @@ fn nm_alloc(): i64 {
     NRZ=t_alloc(Ms*H); NRA=t_alloc(Ms*H); NRY=t_alloc(Ms); NRdY=t_alloc(Ms);
     NRdA=t_alloc(Ms*H); NRdZ=t_alloc(Ms*H);
     NhW1=t_alloc(K*H); Nhb1=t_alloc(H); NhW2=t_alloc(H); Nhb2=t_alloc(1);
-    NdxD=t_alloc(Ms*H); NdWD=t_alloc(K*H); Ntmp=t_alloc(Ms*H);
+    var Mx=Ms; if (Mq>Ms) { Mx=Mq; } var Dx=K; if (H>K) { Dx=H; }    # NdxD/Ntmp hold M×K and M×H
+    NdxD=t_alloc(Mx*Dx); NdWD=t_alloc(K*H); Ntmp=t_alloc(Mx*Dx);      # dumps over support+query (M-1)
     NoW1=t_alloc(K*H); Nob1=t_alloc(H); NoW2=t_alloc(H); Nob2=t_alloc(1);
     Norig=t_alloc(NP); Ngp=t_alloc(NP); Ngm=t_alloc(NP);
     return 0;

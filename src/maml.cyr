@@ -40,12 +40,13 @@ fn maml_init(): i64 {
     var K = maml_k(); var Ms = maml_ms(); var Mq = maml_mq();
     M_W = t_alloc(K); M_b = t_alloc(1);
     M_Xs = t_alloc(Ms*K); M_Ts = t_alloc(Ms); M_Xq = t_alloc(Mq*K); M_Tq = t_alloc(Mq);
-    M_ys = t_alloc(Ms); M_dy = t_alloc(Ms);
+    var Mx = Ms; if (Mq > Ms) { Mx = Mq; }          # M_ys/M_dy/M_dxd are reused for support AND
+    M_ys = t_alloc(Mx); M_dy = t_alloc(Mx);         # query rows -> size by max(Ms,Mq) (M-1)
     M_Wp = t_alloc(K); M_bp = t_alloc(1);
     M_dWs = t_alloc(K); M_dbs = t_alloc(1);
     M_gW = t_alloc(K); M_gb = t_alloc(1);
     M_u = t_alloc(Ms); M_hW = t_alloc(K); M_hb = t_alloc(1);
-    M_dxd = t_alloc(Ms*K);
+    M_dxd = t_alloc(Mx*K);                          # dX dump for support (Ms×K) AND query (Mq×K)
     M_oW = t_alloc(K); M_ob = t_alloc(1);
 
     # init params θ0 = (0.1, 0.1, 0.1; 0.0)

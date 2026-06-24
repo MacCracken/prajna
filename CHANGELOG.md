@@ -4,6 +4,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.2] — 2026-06-24
+
+Third patch of the 0.6.x hardening arc — security / supply-chain (audit S-1, M-1).
+
+### Added
+- **`SECURITY.md` — threat model + supply-chain posture (audit S-1).** Documents that prajna's
+  attack surface is intentionally minimal (no untrusted input; `akshara` loaders stubbed to −1;
+  non-crypto `tyche` PRNG; fully seeded/deterministic), so "security" here is numerical/memory
+  correctness. **Dep-pin audit** (GitHub tags API, 2026-06-24): `rosnet 0.2.0`, `tyche 0.1.1`,
+  `akshara 0.1.0` are all first-party and pinned at their **latest published tags**.
+
+### Fixed
+- **M-1: scratch buffers sized by `max(Ms,Mq)·max(K,H)`.** `M_ys`/`M_dy`/`M_dxd` (maml) and
+  `NdxD`/`Ntmp` (mamlnl) are reused across the support and query passes and as `dX` dumps; they
+  were sized for the support shape only (correct only while `Ms==Mq` and `H≥K`). Now sized by
+  the max so a future `Ms≠Mq` config cannot overrun them. (Scratch only — no behavior change;
+  all gates remain green.)
+
 ## [0.6.1] — 2026-06-24
 
 Second patch of the 0.6.x hardening arc — numerical robustness (audit N-2, N-3).
