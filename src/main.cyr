@@ -13,7 +13,8 @@ include "src/mamlnl.cyr"            # nonlinear MAML + R-operator 2nd-order grad
 include "src/sine.cyr"              # sine-task few-shot meta-learning + f64_sin (M2.c)
 include "src/lopt.cyr"              # learned optimizer (BPTT through an unroll) (M3.a/b)
 include "src/lrnn.cyr"              # recurrent (RNN) learned optimizer (M3.c)
-include "src/text.cyr"             # next-token LM on akshara-tokenized text (M4)
+include "src/text.cyr"             # next-token LM on akshara-tokenized text (M4.a)
+include "src/textmaml.cyr"         # MAML over text shift-tasks (M4.b)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -269,9 +270,31 @@ fn main() {
                    fmt_int(tx_np()); puts(" params)"); nl(); }
     else         { puts("  GATE: FAIL"); nl(); }
 
+    # ---- M4.b: MAML over text shift-tasks (FOMAML) — few-shot text adaptation ----
+    nl();
+    puts("prajna M4.b - MAML over text shift-tasks (FOMAML); few-shot adaptation improves"); nl();
+    tm_init();
+    var alpha = f64_from(3);       # inner lr 3.0
+    var tm_before = tm_eval(20, 7777, alpha);
+    puts("  held-out query NLL (1-step few-shot adapt), descending over meta-training:"); nl();
+    puts("    @ untrained init = "); print_f6(tm_before); nl();
+    var tmlr = f64_div(f64_from(2), f64_from(10));      # 0.2
+    var tm_after = tm_before; var tc = 0;
+    while (tc < 8) {
+        rng_seed(5000 + tc);
+        var ts = 0; while (ts < 100) { tm_train_step(16, tmlr, alpha); ts = ts + 1; }
+        tm_after = tm_eval(20, 7777, alpha);
+        puts("    @ "); fmt_int((tc+1)*100); puts(" steps = "); print_f6(tm_after); nl();
+        tc = tc + 1;
+    }
+    var tm_ok = f64_le(tm_after, tm_before);
+    if (tm_ok == 1) { puts("  RESULT: meta-training improves few-shot TEXT adaptation"); nl(); }
+    else            { puts("  RESULT: no improvement"); nl(); }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
     allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
-    allok = allok && (mc_ok==1) && (bench_ok==1) && (lg==1) && (lo_ok==1) && (r_ok==1) && (tg==1);
+    allok = allok && (mc_ok==1) && (bench_ok==1) && (lg==1) && (lo_ok==1) && (r_ok==1);
+    allok = allok && (tg==1) && (tm_ok==1);
     if (allok) { return 0; }
     return 1;
 }

@@ -4,7 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-24
+
+M4 — text few-shot meta-learning, the bridge into the ML family. prajna now consumes the
+shared `akshara` tokenizer (with attn11/tarka/tentib), runs a tiny next-token LM, and
+meta-learns to adapt it to a new text task in one inner step.
+
 ### Added
+- **M4.b — MAML over text tasks: "MAML works on text"** (`src/textmaml.cyr`): few-shot
+  meta-learning on the M4.a LM. Each task = a cyclic shift map `next[c]=(c+k) mod V` (k
+  sampled); FOMAML meta-learns an init that adapts to a **new shift in one inner step**.
+  Held-out few-shot adaptation NLL drops **2.37 → 0.49** (~79%, monotone) over meta-training
+  — from uniform (ln 11) to a sharp fit. (The inner lr must be large enough — α=0.5 left one
+  step unable to move an 11-way softmax; α=3 fits.) Reuses text.cyr's softmax-xent +
+  akshara vocab; gradient-clipped meta-batch SGD. Test asserts the held-out improvement.
 - **M4.a — next-token LM on `akshara`-tokenized text** (`src/text.cyr`): the text-model
   foundation for M4's text few-shot meta-learning, and the **tie-in to the rest of the ML
   family** (attn11/tarka/tentib share the `akshara` tokenizer). Tokenize text → next-token

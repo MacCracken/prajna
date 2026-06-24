@@ -119,6 +119,19 @@ fn main() {
     tx_init("hello world", 11, 4);
     assert(tx_gate(), "M4.a: next-token LM (embedding+head+softmax-xent) backprop matches FD");
 
+    # ---- M4.b: MAML over text shift-tasks reduces held-out few-shot NLL ----
+    tm_init();
+    var tma = f64_from(3);                               # inner lr 3.0
+    var tmb = tm_eval(12, 7777, tma);
+    var tmc = 0;
+    while (tmc < 3) {
+        rng_seed(5000 + tmc);
+        var tms = 0;
+        while (tms < 100) { tm_train_step(16, f64_div(f64_from(2), f64_from(10)), tma); tms = tms + 1; }
+        tmc = tmc + 1;
+    }
+    assert(f64_le(tm_eval(12, 7777, tma), tmb), "M4.b: text MAML reduces held-out few-shot NLL");
+
     return 0;
 }
 

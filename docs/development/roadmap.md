@@ -98,8 +98,14 @@ tokenizer). Sub-split:
   `akshara` (the family tokenizer); a tiny next-token LM = token embedding → linear head →
   softmax cross-entropy (ported from attn11). Hand-derived backprop incl. the embedding
   scatter-gradient — **FD-gated on all 72 params** ("hello world" → V=8, M=10 pairs).
-- **M4.b — MAML over text tasks** (next): each task = a short text/pattern; meta-learn an
-  init that adapts few-shot to a new text's next-token statistics, beating a non-meta baseline.
+- **M4.b — MAML over text tasks — ✅ landed 2026-06-24** (`src/textmaml.cyr`): each task =
+  a cyclic shift map `next[c]=(c+k) mod V`; FOMAML meta-learns an init that adapts to a new
+  shift in **one inner step**. Held-out few-shot adaptation NLL **2.37 → 0.49** (~79%, monotone)
+  — "MAML works on text," sovereignly. Gradient-clipped meta-batch SGD; test asserts the
+  improvement. **M4 complete.**
+
+> **▶ M4 SHIPPED as `0.4.0` (2026-06-24).** Text few-shot meta-learning on the shared
+> `akshara` tokenizer — prajna is wired into the ML family's data layer (attn11/tarka/tentib).
 
 ### M5 — Continual-learning durability (→ v0.5.0)
 - **EWC** (Fisher penalty) + experience replay so sequential meta-adaptations don't

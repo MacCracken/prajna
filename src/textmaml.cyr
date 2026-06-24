@@ -1,0 +1,146 @@
+# prajna — M4.b: MAML over TEXT tasks (the M4 payoff). Reuses the M4.a next-token LM
+# (embedding + head + softmax-xent from text.cyr) and the akshara vocab. Each task is a
+# cyclic "shift" map next[c] = (c+k) mod V (k sampled per task) — the shared structure a
+# meta-learned init can exploit: from a few support chars it infers the shift and predicts
+# the unseen query chars. FOMAML (1st-order; M2.c.3 showed it ~= full at this scale):
+#   inner: θ' = θ - α·∇L_support(θ)   ;   meta-grad = ∇L_query(θ')   ;   meta-loss = L_query(θ').
+# Demonstration: held-out few-shot adaptation NLL drops over meta-training (vs the initial init).
+
+fn tm_v(): i64 { return 11; }                                  # vocab (a..k)
+fn tm_d(): i64 { return 6; }                                   # embed dim
+fn tm_ks(): i64 { return 3; }                                  # support chars; query = the rest
+fn tm_np(): i64 { var V=tm_v(); var D=tm_d(); return V*D + D*V + V; }
+
+var TM_E=0; var TM_W=0; var TM_b=0;                            # init params θ
+var TM_Ep=0; var TM_Wp=0; var TM_bp=0;                         # adapted θ'
+var TM_dE=0; var TM_dW=0; var TM_db=0;                         # grads
+var TM_aE=0; var TM_aW=0; var TM_ab=0;                         # ACTIVE param pointers (θ or θ')
+var TM_x=0; var TM_y=0; var TM_n=0;                            # current pairs + count
+var TM_embx=0; var TM_logits=0; var TM_probs=0; var TM_dlogits=0; var TM_dembx=0;
+var TM_acc=0; var TM_k=0;                                      # meta-grad acc ; current task shift
+
+fn tm_init(): i64 {
+    var V=tm_v(); var D=tm_d();
+    corpus_set("abcdefghijk", 11);                            # establish the akshara vocab (V=11)
+    TM_E=t_alloc(V*D); TM_W=t_alloc(D*V); TM_b=t_alloc(V);
+    TM_Ep=t_alloc(V*D); TM_Wp=t_alloc(D*V); TM_bp=t_alloc(V);
+    TM_dE=t_alloc(V*D); TM_dW=t_alloc(D*V); TM_db=t_alloc(V);
+    TM_x=t_alloc(V); TM_y=t_alloc(V);
+    TM_embx=t_alloc(V*D); TM_logits=t_alloc(V*V); TM_probs=t_alloc(V*V);
+    TM_dlogits=t_alloc(V*V); TM_dembx=t_alloc(V*D);
+    TM_acc=t_alloc(tm_np());
+    rng_seed(777);
+    var std=f64_div(f64_from(1), f64_from(10));
+    t_randn(TM_E, V*D, std); t_randn(TM_W, D*V, std); t_randn(TM_b, V, std);
+    return 0;
+}
+
+# The task is to FIT the cyclic shift map next[c]=(c+k) mod V in one inner step — support
+# and query both cover all V chars (the standard MAML rapid-adaptation setup: a well-placed
+# init adapts to the new shift in one step; a random init can't).
+fn tm_set_support(): i64 {
+    var V=tm_v(); var c=0;
+    while (c < V) { store64(TM_x+c*8, c); store64(TM_y+c*8, (c+TM_k)%V); c=c+1; }
+    TM_n = V; return 0;
+}
+fn tm_set_query(): i64 { return tm_set_support(); }
+
+# forward (NLL) / backward (∇ into TM_d*) at the ACTIVE params over the current pairs.
+fn tm_forward(): i64 {
+    var V=tm_v(); var D=tm_d(); var M=TM_n; var m=0;
+    while (m < M) {
+        var x=load64(TM_x+m*8); var d=0;
+        while (d < D) { store64(TM_embx+(m*D+d)*8, load64(TM_aE+(x*D+d)*8)); d=d+1; }
+        m=m+1;
+    }
+    linear_fwd(TM_embx, TM_aW, TM_ab, TM_logits, M, D, V);
+    return softmax_xent_fwd(TM_logits, TM_y, TM_probs, M, V);
+}
+fn tm_backward(): i64 {
+    var V=tm_v(); var D=tm_d(); var M=TM_n;
+    tm_forward();
+    softmax_xent_bwd(TM_probs, TM_y, TM_dlogits, M, V);
+    t_zero(TM_dW, D*V); t_zero(TM_db, V);
+    linear_bwd(TM_embx, TM_aW, TM_dlogits, TM_dembx, TM_dW, TM_db, M, D, V);
+    t_zero(TM_dE, V*D);
+    var m=0;
+    while (m < M) {
+        var x=load64(TM_x+m*8); var d=0;
+        while (d < D) {
+            store64(TM_dE+(x*D+d)*8, f64_add(load64(TM_dE+(x*D+d)*8), load64(TM_dembx+(m*D+d)*8)));
+            d=d+1;
+        }
+        m=m+1;
+    }
+    return 0;
+}
+
+# inner adapt: θ' = θ - α·∇L_support(θ)  (writes TM_Ep/TM_Wp/TM_bp)
+fn tm_adapt(alpha): i64 {
+    var V=tm_v(); var D=tm_d();
+    TM_aE=TM_E; TM_aW=TM_W; TM_ab=TM_b;
+    tm_set_support(); tm_backward();
+    var nega=f64_sub(f64_from(0), alpha);
+    t_copy(TM_Ep,TM_E,V*D); t_axpy(TM_Ep,TM_dE,nega,V*D);
+    t_copy(TM_Wp,TM_W,D*V); t_axpy(TM_Wp,TM_dW,nega,D*V);
+    t_copy(TM_bp,TM_b,V);   t_axpy(TM_bp,TM_db,nega,V);
+    return 0;
+}
+# FOMAML meta-grad (into TM_d*) = ∇L_query(θ') ; leaves active=θ', pairs=query.
+fn tm_meta_grad(alpha): i64 {
+    tm_adapt(alpha);
+    TM_aE=TM_Ep; TM_aW=TM_Wp; TM_ab=TM_bp;
+    tm_set_query(); tm_backward(); return 0;
+}
+# query NLL after adaptation (eval metric).
+fn tm_query_nll(alpha): i64 {
+    tm_adapt(alpha);
+    TM_aE=TM_Ep; TM_aW=TM_Wp; TM_ab=TM_bp;
+    tm_set_query(); return tm_forward();
+}
+
+fn tm_pp(idx): i64 {
+    var VD=tm_v()*tm_d(); var DV=tm_d()*tm_v();
+    if (idx < VD) { return TM_E+idx*8; }
+    if (idx < VD+DV) { return TM_W+(idx-VD)*8; }
+    return TM_b+(idx-VD-DV)*8;
+}
+fn tm_gv(idx): i64 {
+    var VD=tm_v()*tm_d(); var DV=tm_d()*tm_v();
+    if (idx < VD) { return load64(TM_dE+idx*8); }
+    if (idx < VD+DV) { return load64(TM_dW+(idx-VD)*8); }
+    return load64(TM_db+(idx-VD-DV)*8);
+}
+fn tm_rand_k(): i64 { return 1 + (rng_u64() & 0x7FFFFFFFFFFFFFFF) % (tm_v() - 1); }   # k in 1..V-1
+
+# meta-batch step: average FOMAML meta-grad over B tasks (gradient-clipped), SGD-update θ.
+fn tm_train_step(B, mlr, alpha): i64 {
+    var NP=tm_np();
+    var j=0; while (j < NP) { store64(TM_acc+j*8, f64_from(0)); j=j+1; }
+    var Lsum=f64_from(0); var b=0;
+    while (b < B) {
+        TM_k = tm_rand_k();
+        tm_meta_grad(alpha);
+        Lsum = f64_add(Lsum, tm_forward());           # query NLL at θ' (active+pairs already set)
+        j=0; while (j < NP) { store64(TM_acc+j*8, f64_add(load64(TM_acc+j*8), tm_gv(j))); j=j+1; }
+        b=b+1;
+    }
+    var C=f64_from(1);
+    j=0;
+    while (j < NP) {
+        var gav=f64_div(load64(TM_acc+j*8), f64_from(B));
+        if (f64_le(gav, f64_sub(f64_from(0), C)) == 1) { gav = f64_sub(f64_from(0), C); }
+        if (f64_le(C, gav) == 1) { gav = C; }
+        var pp=tm_pp(j);
+        store64(pp, f64_sub(load64(pp), f64_mul(mlr, gav)));
+        j=j+1;
+    }
+    return f64_div(Lsum, f64_from(B));
+}
+# held-out avg few-shot adaptation NLL (deterministic via seed).
+fn tm_eval(ntasks, seed, alpha): i64 {
+    rng_seed(seed);
+    var acc=f64_from(0); var i=0;
+    while (i < ntasks) { TM_k = tm_rand_k(); acc = f64_add(acc, tm_query_nll(alpha)); i = i + 1; }
+    return f64_div(acc, f64_from(ntasks));
+}

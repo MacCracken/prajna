@@ -5,10 +5,10 @@
 
 ## Version
 
-**0.3.0** — the learned-optimizer milestone (M3), cut 2026-06-24. Meta-learn the *update
-rule* (feedforward + recurrent learned optimizers) via BPTT through an unrolled optimization;
-hand-derived, FD-gated, beats hand-tuned SGD. (0.1.0 = scaffold+M1; 0.2.0 = M2 MAML.) Next:
-**M4** (text few-shot, adds `akshara`).
+**0.4.0** — the text-few-shot milestone (M4), cut 2026-06-24. prajna consumes the shared
+`akshara` tokenizer + runs a tiny next-token LM, and meta-learns to adapt it to a new text
+task in one step (held-out NLL 2.37→0.49). (0.1.0=scaffold+M1; 0.2.0=M2 MAML; 0.3.0=M3
+learned optimizer.) Next: **M5** (continual-learning durability — EWC + replay).
 
 ## Toolchain
 
@@ -45,10 +45,12 @@ hand-derived, FD-gated, beats hand-tuned SGD. (0.1.0 = scaffold+M1; 0.2.0 = M2 M
   `lopt.cyr`'s optimizee + sampler. The 2nd realization of learn-to-learn (meta-learn the
   *update rule*), feedforward + recurrent.
 - `src/text.cyr` — **M4.a**: next-token LM on `akshara`-tokenized text (token embedding →
-  linear head → softmax cross-entropy, ported from attn11). `tx_init` (tokenize+build pairs),
-  `tx_forward`/`tx_backward` (incl. embedding scatter-grad), `tx_gate` (FD over V·D+D·V+V
-  params). The tie-in to the ML family (shared tokenizer).
-- `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.a, per-stage gates. Exit 0 iff all pass.
+  linear head → softmax cross-entropy, ported from attn11). `tx_init`/`tx_forward`/`tx_backward`
+  (incl. embedding scatter-grad)/`tx_gate` (FD). The tie-in to the ML family (shared tokenizer).
+- `src/textmaml.cyr` — **M4.b**: MAML over text shift-tasks on the M4.a LM. `tm_init`,
+  `tm_set_support`/`tm_set_query`, `tm_adapt` (inner step), `tm_meta_grad` (FOMAML),
+  `tm_query_nll`, `tm_train_step` (gradient-clipped meta-batch), `tm_eval` (held-out NLL).
+- `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.*, per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
 
 ## Verification (2026-06-24)
@@ -77,8 +79,10 @@ hand-derived, FD-gated, beats hand-tuned SGD. (0.1.0 = scaffold+M1; 0.2.0 = M2 M
 - **M3.c**: recurrent-optimizer two-recurrence BPTT **matches FD on all 29 params**;
   meta-trains to **0.085** — beating feedforward (0.096) and SGD (0.107).
 - **M4.a**: next-token LM on akshara-tokenized "hello world" (V=8, M=10 pairs, NLL 2.106 ≈
-  ln 8); embedding+head+softmax-xent backprop **matches FD on all 72 params**. Demo run exit
-  0; `cyrius test` green (all FD gates + M2.c + M3.a/b/c + M4.a).
+  ln 8); embedding+head+softmax-xent backprop **matches FD on all 72 params**.
+- **M4.b**: text-MAML over cyclic-shift tasks — held-out 1-step adaptation NLL **2.37 → 0.49**
+  (~79%) over meta-training. Demo run exit 0; `cyrius test` green (all FD gates + M2.c +
+  M3.a/b/c + M4.a/b).
 
 ## Dependencies
 
@@ -94,7 +98,7 @@ _None yet._
 
 ## Next
 
-**M4.b** — MAML over text tasks: each task = a short text/pattern; meta-learn an init that
-adapts few-shot to a new text's next-token statistics (on the M4.a LM), beating a non-meta
-baseline. (M4.a — the text-model foundation + `akshara` tie-in — landed + FD-gated.) See
+**M5 — continual-learning durability** (→ v0.5.0): EWC (Fisher penalty) + experience replay so
+sequential meta-adaptations don't catastrophically forget — the safety glue the
+self-improvement-lane flags as mandatory for an on-device self-updater. See
 [`roadmap.md`](roadmap.md).
