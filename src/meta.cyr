@@ -54,13 +54,11 @@ fn meta_grad_fd(t): i64 {
 
 fn meta_tol(): i64 { return f64_div(f64_from(1), f64_from(100000)); }         # 1e-5
 
-# Gate: the full (2nd-order) meta-grad must match finite differences within tol.
+# Gate: the full (2nd-order) meta-grad must match finite differences within tol (NaN-safe).
 fn gate_pass(t): i64 {
-    var d = f64_abs(f64_sub(meta_grad_full(t), meta_grad_fd(t)));
-    return f64_le(d, meta_tol());
+    return fd_match(meta_grad_full(t), meta_grad_fd(t), meta_tol());
 }
 # The second-order term is REAL: FOMAML must DIFFER from the FD ground truth by > tol.
 fn second_order_observable(t): i64 {
-    var d = f64_abs(f64_sub(meta_grad_fomaml(t), meta_grad_fd(t)));
-    return f64_le(meta_tol(), d);
+    return fd_exceeds(meta_grad_fomaml(t), meta_grad_fd(t), meta_tol());
 }

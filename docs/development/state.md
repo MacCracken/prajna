@@ -5,10 +5,10 @@
 
 ## Version
 
-**0.5.0** — the continual-learning milestone (M5), cut 2026-06-24, **completing the M1–M5
-roadmap**. Sequential adaptation without catastrophic forgetting (experience replay; EWC
-implemented + honest-negative at toy scale). (0.1.0=M1; 0.2.0=M2 MAML; 0.3.0=M3 learned
-optimizer; 0.4.0=M4 text few-shot.) Next: the **v1.0 freeze cycle**.
+**0.6.0** — first patch of the **0.6.x hardening arc**, cut 2026-06-24: **NaN-safe FD gates**
+(audit N-1). The gates were NaN-blind (`f64_le(NaN,·)==1` → a NaN gradient silently passed);
+now routed through `src/fdgate.cyr`'s finite-guard so non-finite diffs *fail*. (M1–M5 shipped
+0.1.0–0.5.0.) Next: **0.6.1** numerical robustness.
 
 ## Toolchain
 
@@ -53,8 +53,11 @@ optimizer; 0.4.0=M4 text few-shot.) Next: the **v1.0 freeze cycle**.
 - `src/ewc.cyr` — **M5**: continual-learning durability. 1→8→1 tanh MLP (`ec_forward`/
   `ec_backward`/`ec_grad_gate`); `ec_fisher` (diagonal Fisher), `ec_snapshot`/`ec_reset`,
   `ec_step` (EWC penalty), `ec_set_ab` (experience replay). Replay = the robust method.
+- `src/fdgate.cyr` — **0.6.0**: NaN-safe FD-gate comparison (`fd_finite`/`fd_match`/`fd_exceeds`).
+  Every gate routes through it; a NaN/Inf difference *fails* the gate (cyrius `f64_le(NaN,·)==1`
+  used to let it pass). Shared chokepoint for all 9 gates + 3 observables.
 - `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.* → M5, per-stage gates. Exit 0 iff all pass.
-- `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
+- `src/test.cyr` — `[build].test`: NaN-guard assertions + all FD gates + M2.c/M3/M4/M5 results.
 
 ## Verification (2026-06-24)
 
@@ -103,9 +106,8 @@ _None yet._
 
 ## Next
 
-**The 0.6.x hardening arc** (audit / hardening / security / refactor) — before the v1.0 freeze.
-Grounded in [`audit-0.6.md`](audit-0.6.md). Patches: **0.6.0** audit + NaN-safe gates (the FD
-gates are NaN-blind — a NaN gradient silently *passes* `f64_le(NaN,x)==1`; the critical fix),
-**0.6.1** numerical robustness (ln floor + NaN fail-fast), **0.6.2** security/supply-chain (threat
-model + dep pins + scratch asserts), **0.6.3** refactor (shared param-addressing + gate harness).
-Then the v1.0 freeze cycle. See [`roadmap.md`](roadmap.md).
+**0.6.x hardening arc** (grounded in [`audit-0.6.md`](audit-0.6.md)). **0.6.0 ✅ done** (NaN-safe
+gates). Remaining: **0.6.1** numerical robustness (N-2 ln floor + N-3 NaN fail-fast in training
+loops), **0.6.2** security/supply-chain (S-1 threat model + dep pins, M-1 scratch asserts),
+**0.6.3** refactor (R-1/R-2/R-3 shared param-addressing + gate harness). Then the v1.0 freeze
+cycle. See [`roadmap.md`](roadmap.md).

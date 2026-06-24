@@ -250,7 +250,7 @@ fn nm_grad_gate(): i64 {
         store64(pp, f64_sub(o,eps)); var lo=nm_support_loss();
         store64(pp, o);
         var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
-        if (f64_le(f64_abs(f64_sub(nm_lsgrad_val(i), fd)), nm_tol())==0) { ok=0; }
+        if (fd_match(nm_lsgrad_val(i), fd, nm_tol())==0) { ok=0; }
         i=i+1;
     }
     return ok;
@@ -271,7 +271,7 @@ fn nm_hvp_gate(): i64 {
     var ok=1; i=0;
     while (i<NP) {
         var fd=f64_div(f64_sub(load64(Ngp+i*8),load64(Ngm+i*8)), f64_mul(f64_from(2),eps));
-        if (f64_le(f64_abs(f64_sub(nm_hvp_val(i), fd)), nm_tol())==0) { ok=0; }
+        if (fd_match(nm_hvp_val(i), fd, nm_tol())==0) { ok=0; }
         i=i+1;
     }
     return ok;
@@ -287,7 +287,7 @@ fn nm_meta_grad_gate(): i64 {
         store64(pp, f64_sub(o,eps)); var lo=nm_meta_loss();
         store64(pp, o);
         var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
-        if (f64_le(f64_abs(f64_sub(nm_meta_val(i), fd)), nm_tol())==0) { ok=0; }
+        if (fd_match(nm_meta_val(i), fd, nm_tol())==0) { ok=0; }
         i=i+1;
     }
     return ok;
@@ -303,7 +303,7 @@ fn nm_2nd_observable(): i64 {
         store64(pp, f64_sub(o,eps)); var lo=nm_meta_loss();
         store64(pp, o);
         var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
-        if (f64_le(nm_tol(), f64_abs(f64_sub(nm_fomaml_val(i), fd)))==1) { seen=1; }
+        if (fd_exceeds(nm_fomaml_val(i), fd, nm_tol())==1) { seen=1; }
         i=i+1;
     }
     return seen;

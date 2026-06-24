@@ -1,0 +1,36 @@
+# prajna — shared finite-difference gate comparison (0.6.0 hardening; fixes audit N-1).
+#
+# THE BUG: every FD gate compared with f64_le(|analytic - fd|, tol). cyrius f64_le is
+# !f64_gt, and f64_gt is IEEE (NaN comparisons are false), so f64_le(NaN, tol) == 1
+# (probed 2026-06-24). A NaN/Inf gradient therefore SILENTLY PASSED the gate — the
+# harness that is prajna's whole correctness story couldn't catch its most likely failure.
+#
+# THE FIX: guard FINITENESS first via f64_gt (NaN-safe). A non-finite difference fails.
+#   fd_finite(v) = -BIG < v < BIG   (NaN/±Inf -> false ; finite -> true)
+#   fd_match     = diff finite AND |diff| <= tol     (the gate's pass condition)
+#   fd_exceeds   = diff finite AND |diff| >  tol      (the "2nd-order observable" condition)
+
+fn fd_big(): i64 { return f64_from(1000000000000000000); }    # 1e18 — finite, above any real grad/diff
+
+# 1 iff v is finite (not NaN, not ±Inf). Uses f64_gt only (IEEE-correct on NaN).
+fn fd_finite(v): i64 {
+    var big = fd_big();
+    if (f64_gt(v, f64_sub(f64_from(0), big)) == 0) { return 0; }   # v <= -BIG, or NaN
+    if (f64_gt(big, v) == 0) { return 0; }                          # v >=  BIG, or NaN
+    return 1;
+}
+
+# NaN-safe gate PASS: analytic matches fd within tol AND the difference is finite.
+fn fd_match(analytic, fd, tol): i64 {
+    var d = f64_sub(analytic, fd);
+    if (fd_finite(d) == 0) { return 0; }                           # NaN/Inf -> FAIL (was: silently pass)
+    return f64_le(f64_abs(d), tol);
+}
+
+# NaN-safe "observable" check: analytic differs from fd by MORE than tol, finitely.
+# (A non-finite difference is a bug, not a real second-order signal -> does NOT count.)
+fn fd_exceeds(analytic, fd, tol): i64 {
+    var d = f64_sub(analytic, fd);
+    if (fd_finite(d) == 0) { return 0; }
+    return f64_le(tol, f64_abs(d));
+}

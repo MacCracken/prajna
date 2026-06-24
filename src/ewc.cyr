@@ -112,7 +112,7 @@ fn ec_fd_grad(idx): i64 {
 fn ec_grad_gate(): i64 {                                       # FD-gate the MLP backward on task A
     ec_set_a(); ec_backward();
     var ok=1; var i=0; var NP=ec_np();
-    while (i < NP) { if (f64_le(f64_abs(f64_sub(ec_gv(i), ec_fd_grad(i))), ec_tol()) == 0) { ok=0; } i=i+1; }
+    while (i < NP) { if (fd_match(ec_gv(i), ec_fd_grad(i), ec_tol()) == 0) { ok=0; } i=i+1; }
     return ok;
 }
 

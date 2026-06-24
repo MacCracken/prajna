@@ -6,6 +6,7 @@
 include "lib/tyche.cyr"              # rng_* (rosnet's t_randn -> rng_normal; link dep)
 include "lib/rosnet.cyr"            # t_alloc / linear_fwd / linear_bwd / t_axpy ...
 include "lib/akshara.cyr"           # corpus_set / gd_ld — sovereign tokenizer (M4)
+include "src/fdgate.cyr"            # NaN-safe FD-gate comparison (0.6.0 hardening)
 include "src/meta.cyr"               # the scalar meta-gradient core (M1)
 include "src/maml.cyr"               # linear-regression MAML on rosnet (M2.a)
 include "src/mlp.cyr"                # 1-hidden-layer tanh MLP + backprop (M2.b.1)

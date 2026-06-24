@@ -134,7 +134,7 @@ fn tx_gate(): i64 {
     tx_backward();
     var ok=1; var i=0; var NP=tx_np();
     while (i < NP) {
-        if (f64_le(f64_abs(f64_sub(tx_gv(i), tx_fd(i))), tx_tol()) == 0) { ok = 0; }
+        if (fd_match(tx_gv(i), tx_fd(i), tx_tol()) == 0) { ok = 0; }
         i = i + 1;
     }
     return ok;

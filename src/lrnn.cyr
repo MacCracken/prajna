@@ -162,7 +162,7 @@ fn lr_gate(): i64 {
     lr_meta_grad();
     var ok=1; var i=0; var NP=lr_np();
     while (i < NP) {
-        if (f64_le(f64_abs(f64_sub(lr_gv(i), lr_fd(i))), lr_tol()) == 0) { ok = 0; }
+        if (fd_match(lr_gv(i), lr_fd(i), lr_tol()) == 0) { ok = 0; }
         i = i + 1;
     }
     return ok;

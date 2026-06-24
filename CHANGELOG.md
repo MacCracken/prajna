@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-24
+
+First patch of the 0.6.x hardening arc (audit → NaN-safe gates). See
+[`docs/development/audit-0.6.md`](docs/development/audit-0.6.md).
+
+### Security
+- **Fixed audit N-1: the FD gates were NaN-blind.** Every gate compared with
+  `f64_le(|analytic − fd|, tol)`, and cyrius `f64_le` is `!f64_gt`, so `f64_le(NaN, tol) == 1`
+  (probed) — a **NaN/Inf gradient silently PASSED** the gate instead of failing it. The
+  verification harness that is prajna's whole correctness story could not catch its most likely
+  failure mode. New `src/fdgate.cyr` adds a finite-guard (`fd_finite` via `f64_gt`, which is
+  IEEE-correct on NaN) and routes every gate through `fd_match` / `fd_exceeds`, so a non-finite
+  difference now **fails** the gate. All 9 gates + 3 observables across M1–M5 converted; a
+  negative test asserts `fd_match(NaN,·)==0` and `fd_match(Inf,·)==0`. All M1–M5 gates remain
+  green (finite-case behaviour unchanged).
+
 ## [0.5.0] — 2026-06-24
 
 M5 — continual-learning durability, and the **completion of the M1–M5 roadmap**. prajna is now

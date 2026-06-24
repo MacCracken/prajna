@@ -118,7 +118,7 @@ fn mlp_grad_gate(): i64 {
     mlp_backward();
     var ok = 1; var i = 0; var NP = mlp_np();
     while (i < NP) {
-        if (f64_le(f64_abs(f64_sub(mlp_grad_val(i), mlp_fd_grad(i))), mlp_tol()) == 0) { ok = 0; }
+        if (fd_match(mlp_grad_val(i), mlp_fd_grad(i), mlp_tol()) == 0) { ok = 0; }
         i = i + 1;
     }
     return ok;

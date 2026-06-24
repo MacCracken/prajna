@@ -147,8 +147,7 @@ fn maml_an_fomaml(idx): i64 { var K = maml_k(); if (idx < K) { return load64(M_g
 fn maml_gate(): i64 {
     var K = maml_k(); var ok = 1; var i = 0;
     while (i < K + 1) {
-        var d = f64_abs(f64_sub(maml_an_full(i), maml_fd_grad(i)));
-        if (f64_le(d, maml_tol()) == 0) { ok = 0; }
+        if (fd_match(maml_an_full(i), maml_fd_grad(i), maml_tol()) == 0) { ok = 0; }
         i = i + 1;
     }
     return ok;
@@ -157,7 +156,7 @@ fn maml_gate(): i64 {
 fn maml_2nd_observable(): i64 {
     var K = maml_k(); var seen = 0; var i = 0;
     while (i < K + 1) {
-        if (f64_le(maml_tol(), f64_abs(f64_sub(maml_an_fomaml(i), maml_fd_grad(i)))) == 1) { seen = 1; }
+        if (fd_exceeds(maml_an_fomaml(i), maml_fd_grad(i), maml_tol()) == 1) { seen = 1; }
         i = i + 1;
     }
     return seen;

@@ -6,6 +6,7 @@ include "lib/syscalls.cyr"
 include "lib/tyche.cyr"
 include "lib/rosnet.cyr"
 include "lib/akshara.cyr"
+include "src/fdgate.cyr"
 include "src/meta.cyr"
 include "src/maml.cyr"
 include "src/mlp.cyr"
@@ -21,6 +22,18 @@ fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n
 
 fn main() {
     alloc_init();
+
+    # ---- 0.6.0: NaN-safe FD gates (audit N-1) — the guard must REJECT non-finite diffs ----
+    var fg_nan = f64_div(f64_from(0), f64_from(0));
+    var fg_inf = f64_div(f64_from(1), f64_from(0));
+    var fg_tol = f64_div(f64_from(1), f64_from(10000));
+    assert(fd_finite(f64_from(5)), "fdgate: finite value passes fd_finite");
+    assert(fd_finite(fg_nan) == 0, "fdgate: NaN rejected by fd_finite");
+    assert(fd_finite(fg_inf) == 0, "fdgate: +Inf rejected by fd_finite");
+    assert(fd_finite(f64_sub(f64_from(0), fg_inf)) == 0, "fdgate: -Inf rejected by fd_finite");
+    assert(fd_match(f64_from(3), f64_from(3), fg_tol), "fdgate: equal values match");
+    assert(fd_match(fg_nan, f64_from(3), fg_tol) == 0, "fdgate: NaN gradient FAILS the gate (was: passed)");
+    assert(fd_match(fg_inf, f64_from(3), fg_tol) == 0, "fdgate: Inf gradient FAILS the gate");
 
     # ---- M1: scalar meta-gradient ----
     var theta = f64_div(f64_from(1), f64_from(2));      # 0.5

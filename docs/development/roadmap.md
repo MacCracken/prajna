@@ -127,8 +127,10 @@ Before the v1.0 freeze: a hardening pass, each theme its own patch. Grounded in 
 audit in [`audit-0.6.md`](audit-0.6.md) (key finding: the FD gates are **NaN-blind** — a NaN
 gradient silently *passes*; `f64_le(NaN,x)==1`).
 
-- **0.6.0 — Audit + NaN-safe gates** (fixes audit **N-1**): the audit doc + a finite-guard so
-  every FD gate *fails* on NaN/Inf. The critical correctness fix — a trustworthy harness first.
+- **0.6.0 — Audit + NaN-safe gates — ✅ landed 2026-06-24** (fixes audit **N-1**): the audit
+  doc + `src/fdgate.cyr` (`fd_finite`/`fd_match`/`fd_exceeds` via NaN-safe `f64_gt`). All 9 gates
+  + 3 observables routed through it; a NaN/Inf gradient now *fails* the gate (was: silently
+  passed). Negative test asserts the rejection; all M1–M5 gates stay green.
 - **0.6.1 — Numerical robustness** (**N-2, N-3**): floor `ln`'s arg in softmax-xent; NaN/Inf
   fail-fast in the training loops (diagnose divergence, don't print `--.------` silently).
 - **0.6.2 — Security / supply-chain** (**S-1, M-1**): threat-model note (no untrusted input,

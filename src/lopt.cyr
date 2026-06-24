@@ -122,7 +122,7 @@ fn lo_gate(): i64 {
     lo_meta_grad();
     var ok=1; var i=0; var NP=lo_np();
     while (i < NP) {
-        if (f64_le(f64_abs(f64_sub(lo_grad_val(i), lo_fd_grad(i))), lo_tol()) == 0) { ok = 0; }
+        if (fd_match(lo_grad_val(i), lo_fd_grad(i), lo_tol()) == 0) { ok = 0; }
         i = i + 1;
     }
     return ok;
