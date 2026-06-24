@@ -14,14 +14,15 @@
 #   H_s·v = (RgW1,Rgb1,RgW2,Rgb2) ;  meta-grad = gq' - α·(H_s·gq'),  v := gq'.
 # Three-level FD gate: ∇Ls, the HVP (vs FD-of-gradient), and the meta-grad.
 
-# dims are configurable at runtime (nm_init = fixed M2.b.2 gate config; nm_config = M2.c).
-var nmK=2; var nmH=3; var nmMs=4; var nmMq=4;
+# dims + inner lr are configurable at runtime (nm_init = M2.b.2 gate config; nm_config = M2.c).
+var nmK=2; var nmH=3; var nmMs=4; var nmMq=4; var nmAlpha=0;
 fn nm_k(): i64 { return nmK; }
 fn nm_h(): i64 { return nmH; }
 fn nm_ms(): i64 { return nmMs; }
 fn nm_mq(): i64 { return nmMq; }
 fn nm_np(): i64 { return nm_k()*nm_h() + nm_h() + nm_h() + 1; }
-fn nm_alpha(): i64 { return f64_div(f64_from(1), f64_from(10)); } # 0.1
+fn nm_alpha(): i64 { return nmAlpha; }                            # inner step size
+fn nm_set_alpha(a): i64 { nmAlpha = a; return 0; }
 fn nm_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }# 1e-4
 
 # params / data / direction
@@ -65,12 +66,18 @@ fn nm_alloc(): i64 {
     return 0;
 }
 
-# M2.c: configure arbitrary dims + allocate (caller fills NXs/NTs/NXq/NTq).
-fn nm_config(k, h, ms, mq): i64 { nmK=k; nmH=h; nmMs=ms; nmMq=mq; nm_alloc(); return 0; }
+# M2.c: configure arbitrary dims + allocate (caller fills NXs/NTs/NXq/NTq); inner lr 0.1.
+fn nm_config(k, h, ms, mq): i64 {
+    nmK=k; nmH=h; nmMs=ms; nmMq=mq;
+    nmAlpha = f64_div(f64_from(1), f64_from(10));
+    nm_alloc(); return 0;
+}
 
-# M2.b.2 gate config: fixed K=2,H=3 dims + fixed task data.
+# M2.b.2 gate config: fixed K=2,H=3 dims + fixed task data + inner lr 0.1.
 fn nm_init(): i64 {
-    nmK=2; nmH=3; nmMs=4; nmMq=4; nm_alloc();
+    nmK=2; nmH=3; nmMs=4; nmMq=4;
+    nmAlpha = f64_div(f64_from(1), f64_from(10));
+    nm_alloc();
     # params θ (reuse mlp.cyr's ften: n/10)
     store64(NW1+0*8, ften(2)); store64(NW1+1*8, ften(0-1)); store64(NW1+2*8, ften(3));
     store64(NW1+3*8, ften(0-2)); store64(NW1+4*8, ften(1)); store64(NW1+5*8, ften(0-3));

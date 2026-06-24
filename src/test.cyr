@@ -50,6 +50,20 @@ fn main() {
     assert(sine_validate(), "M2.c.1: f64_sin valid at known angles");
     assert(sine_sanity(), "M2.c.1: engine FD-gates pass at sine config (K=1,H=8)");
 
+    # ---- M2.c.2: meta-training reduces held-out few-shot adaptation loss ----
+    nm_config(1, 16, 8, 8);
+    sine_opt_init();
+    rng_seed(1001); sine_init_params();
+    var mcb = sine_eval(10, 7777);
+    var ch = 0;
+    while (ch < 3) {
+        rng_seed(2002 + ch);
+        var ss = 0;
+        while (ss < 100) { sine_train_batch_step(12, f64_div(f64_from(5), f64_from(100))); ss = ss + 1; }
+        ch = ch + 1;
+    }
+    assert(f64_le(sine_eval(10, 7777), mcb), "M2.c.2: meta-training reduces held-out adapt loss");
+
     return 0;
 }
 

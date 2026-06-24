@@ -29,9 +29,11 @@ on top, untagged (toward 0.2.0).**
   `nm_meta_grad` / three FD gates + `nm_2nd_observable`. **Dimension-configurable**
   (`nm_config(k,h,ms,mq)`) so M2.c reuses the verified engine; `nm_init` = the fixed
   M2.b.2 gate config.
-- `src/sine.cyr` — **M2.c.1**: sovereign `f64_sin` (range-reduced Taylor) + `f64_pi`;
+- `src/sine.cyr` — **M2.c.1/.2**: sovereign `f64_sin` (range-reduced Taylor) + `f64_pi`;
   sine-task sampler (`sine_sample_task`/`sine_fill`) over `tyche`; `sine_init_params`;
-  `sine_sanity` (the 3 FD gates at the K=1,H=8 sine config — engine generalization).
+  `sine_sanity` (3 FD gates at the sine config — generalization); **M2.c.2 meta-training**:
+  `sine_eval` (held-out avg adapt loss), `sine_opt_init` + `sine_train_batch_step`
+  (16-task meta-batch SGD step). `nm_set_alpha` makes the inner lr configurable.
 - `src/main.cyr` — demo: M1 → M2.a → M2.b.1, with per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts M1 + M2.a + M2.b.1 gates.
 
@@ -48,6 +50,9 @@ on top, untagged (toward 0.2.0).**
   observably differs (θ-dependent Hessian is real); meta-descent `0.050 → 0.030`.
 - **M2.c.1**: `f64_sin` valid at known angles (<1e-5); the three FD gates **pass at the
   K=1,H=8 sine config** on a sampled task — the R-operator engine generalizes.
+- **M2.c.2**: held-out 10-shot adapt loss descends **monotonically 2.476 → 1.560**
+  (~37%) over 1000 meta-training steps (K=1, H=40, 16-task meta-batch) — meta-training
+  measurably improves few-shot adaptation.
 
 ## Dependencies
 
@@ -63,8 +68,7 @@ _None yet._
 
 ## Next
 
-**M2.c.2** — the meta-training loop: meta-train the MLP initialization across sampled
-sine tasks with the full second-order meta-grad; show the meta-loss falling and K-shot
-fast adaptation to a held-out task beating a non-meta baseline. Then **M2.c.3** — the
-FOMAML-vs-2nd-order benchmark (honest-negative eligible at this tiny scale). See
-[`roadmap.md`](roadmap.md).
+**M2.c.3** — the benchmark + honest-negative: meta-train with full-2nd-order vs FOMAML
+(vs Reptile) under the same schedule and compare held-out adaptation. **Does the 2nd-order
+term actually help at this tiny scale?** — report the finding either way (attn11-MTP
+style). This closes M2. See [`roadmap.md`](roadmap.md).

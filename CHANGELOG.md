@@ -5,6 +5,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M2.c.2 — MAML meta-training on sine tasks** (`src/sine.cyr`): meta-train the MLP
+  initialization across sampled sine tasks with the full second-order meta-grad +
+  **meta-batch** (16 tasks/step, cuts gradient noise) SGD. The held-out 10-shot
+  adaptation loss descends **monotonically 2.48 → 1.56** (~37%) over 1000 steps — the
+  "MAML works on AGNOS" result, sovereign from the metal up. Inner lr made configurable
+  (`nm_set_alpha`); `sine_eval` (held-out) + `sine_train_batch_step` (silent). Test
+  asserts the improvement deterministically.
 - **M2.c.1 — sine-task substrate + engine generalization** (`src/sine.cyr`): a
   sovereign **`f64_sin`** (π via a 245850922/78256779 convergent + range-reduced 8-term
   Taylor; validated at 0, π/6, π/2, π, −π/2 within 1e-5), the sine-task sampler

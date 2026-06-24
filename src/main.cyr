@@ -148,8 +148,32 @@ fn main() {
     if (sg == 1) { puts("  ENGINE-GEN: PASS (3 FD gates pass at K=1,H=8 on a sampled sine task)"); nl(); }
     else         { puts("  ENGINE-GEN: FAIL"); nl(); }
 
+    # ---- M2.c.2: MAML meta-training on sine tasks (full 2nd-order) ----
+    nl();
+    puts("prajna M2.c.2 - MAML meta-training on sine tasks (full 2nd-order)"); nl();
+    nm_config(1, 40, 10, 10);                           # K=1, H=40, 10-shot; inner lr 0.1
+    sine_opt_init();
+    rng_seed(1001); sine_init_params();
+    var mc_before = sine_eval(20, 7777);                # held-out adapt loss @ random init
+    puts("  held-out 10-shot adapt loss (avg/20 tasks), descending over meta-training:"); nl();
+    puts("    @ random init = "); print_f6(mc_before); nl();
+    var mlr = f64_div(f64_from(5), f64_from(100));      # 0.05
+    var mc_after = mc_before;
+    var chunk = 0;
+    while (chunk < 10) {
+        rng_seed(2002 + chunk);                         # fresh i.i.d. task stream per chunk
+        var s = 0;
+        while (s < 100) { sine_train_batch_step(16, mlr); s = s + 1; }   # 16-task meta-batch
+        mc_after = sine_eval(20, 7777);                 # same held-out set each time
+        puts("    @ "); fmt_int((chunk+1)*100); puts(" steps  = "); print_f6(mc_after); nl();
+        chunk = chunk + 1;
+    }
+    var mc_ok = f64_le(mc_after, mc_before);
+    if (mc_ok == 1) { puts("  RESULT: PASS - meta-training improves few-shot adaptation"); nl(); }
+    else            { puts("  RESULT: FAIL - no improvement"); nl(); }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
-    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
+    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1) && (mc_ok==1);
     if (allok) { return 0; }
     return 1;
 }

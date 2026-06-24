@@ -85,3 +85,41 @@ fn sine_sanity(): i64 {
     if ((g1 == 1) && (g2 == 1) && (g3 == 1)) { return 1; }
     return 0;
 }
+
+# --- M2.c.2: meta-training ---
+# Average adapt-then-query loss over `ntasks` held-out tasks (deterministic via seed).
+fn sine_eval(ntasks, seed): i64 {
+    rng_seed(seed);
+    var acc = f64_from(0); var i = 0;
+    while (i < ntasks) { sine_sample_task(); acc = f64_add(acc, nm_meta_loss()); i = i + 1; }
+    return f64_div(acc, f64_from(ntasks));
+}
+
+# meta-batch gradient accumulator (flat over all NP params, allocated after nm_config)
+var sineAcc = 0;
+fn sine_opt_init(): i64 { sineAcc = t_alloc(nm_np()); return 0; }
+
+# One META-BATCH outer step: average the full second-order meta-grad over B sampled tasks
+# (cuts the single-task gradient noise), then SGD-update θ in place. Returns the batch's
+# average pre-update adapt loss. SILENT (test.cyr drives the loop without print helpers).
+fn sine_train_batch_step(B, mlr): i64 {
+    var NP = nm_np();
+    var j = 0; while (j < NP) { store64(sineAcc+j*8, f64_from(0)); j = j + 1; }
+    var Lsum = f64_from(0); var b = 0;
+    while (b < B) {
+        sine_sample_task();
+        Lsum = f64_add(Lsum, nm_meta_loss());
+        nm_meta_grad();
+        j = 0;
+        while (j < NP) { store64(sineAcc+j*8, f64_add(load64(sineAcc+j*8), nm_meta_val(j))); j = j + 1; }
+        b = b + 1;
+    }
+    var scale = f64_div(mlr, f64_from(B));
+    j = 0;
+    while (j < NP) {
+        var pp = nm_param_ptr(j);
+        store64(pp, f64_sub(load64(pp), f64_mul(scale, load64(sineAcc+j*8))));
+        j = j + 1;
+    }
+    return f64_div(Lsum, f64_from(B));
+}
