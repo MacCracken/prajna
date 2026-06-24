@@ -1,0 +1,129 @@
+# prajna — M3: learned optimizer ("learning to learn by gradient descent by gradient
+# descent", Andrychowicz et al. 2016). The SECOND realization of learn-to-learn: where M2
+# (MAML) meta-learns an INITIALIZATION, M3 meta-learns the UPDATE RULE itself — a small net
+# g_φ that maps a gradient to a parameter update — by BPTT through an unrolled optimization.
+#
+# OPTIMIZEE (toy): scalar quadratic  ℓ(θ) = ½·a·(θ-c)²  ->  ∇ℓ = a(θ-c),  ∇²ℓ = a (constant).
+# OPTIMIZER g_φ: a 1->H->1 tanh MLP, gradient -> update.  φ = (W1[H], b1[H], W2[H], b2).
+# UNROLL:  θ_{t+1} = θ_t + g_φ(∇ℓ(θ_t)),  t=0..T-1.   META-LOSS  L(φ) = Σ_{t=1}^T ℓ(θ_t).
+# META-GRAD ∂L/∂φ via BPTT (D_t := ∂L/∂θ_t):
+#   D_T = a(θ_T-c)
+#   per step t (T-1..0):  du = D_{t+1} ;  (dφ += ∂u_t/∂φ·du, dg = ∂u_t/∂g_t·du) via g_φ bwd ;
+#                          D_t = D_{t+1} + dg·a + [t≥1]·a(θ_t-c)
+# The dg·a term routes D back through the optimizee Hessian a — the second-order content.
+# FD-gated: ∂L/∂φ vs central finite-diff of L over each φ param.
+
+fn lo_ho(): i64 { return 6; }                                  # optimizer hidden units
+fn lo_t(): i64 { return 8; }                                   # unroll length
+fn lo_np(): i64 { return 3*lo_ho() + 1; }                      # 19 optimizer params
+fn lo_tol(): i64 { return f64_div(f64_from(1), f64_from(1000)); }  # 1e-3
+
+var LO_W1=0; var LO_b1=0; var LO_W2=0; var LO_b2=0;            # φ
+var LO_dW1=0; var LO_db1=0; var LO_dW2=0; var LO_db2=0;        # ∂L/∂φ
+var LO_th=0; var LO_g=0; var LO_h=0;                           # caches: θ_0..T, g_t, h_t
+var LO_gb=0; var LO_zb=0; var LO_ub=0;                         # fwd scratch
+var LO_dub=0; var LO_dgb=0; var LO_dh=0; var LO_dz=0;          # bwd scratch
+var LO_a=0; var LO_c=0; var LO_th0=0;                          # optimizee a, c, θ_0
+
+fn lo_set_task(a, c, th0): i64 { LO_a=a; LO_c=c; LO_th0=th0; return 0; }
+
+fn lo_init(): i64 {
+    var H=lo_ho(); var T=lo_t();
+    LO_W1=t_alloc(H); LO_b1=t_alloc(H); LO_W2=t_alloc(H); LO_b2=t_alloc(1);
+    LO_dW1=t_alloc(H); LO_db1=t_alloc(H); LO_dW2=t_alloc(H); LO_db2=t_alloc(1);
+    LO_th=t_alloc(T+1); LO_g=t_alloc(T); LO_h=t_alloc(T*H);
+    LO_gb=t_alloc(1); LO_zb=t_alloc(H); LO_ub=t_alloc(1);
+    LO_dub=t_alloc(1); LO_dgb=t_alloc(1); LO_dh=t_alloc(H); LO_dz=t_alloc(H);
+    lo_set_task(f64_from(1), f64_from(2), f64_from(0));        # ℓ=½(θ-2)², θ_0=0
+    # φ init (small fixed -> stable untrained unroll)
+    store64(LO_W1+0*8, ften(1)); store64(LO_W1+1*8, ften(0-1)); store64(LO_W1+2*8, ften(2));
+    store64(LO_W1+3*8, ften(0-2)); store64(LO_W1+4*8, ften(1)); store64(LO_W1+5*8, ften(0-1));
+    store64(LO_b1+0*8, ften(1)); store64(LO_b1+1*8, ften(0-1)); store64(LO_b1+2*8, ften(0));
+    store64(LO_b1+3*8, ften(1)); store64(LO_b1+4*8, ften(0-1)); store64(LO_b1+5*8, ften(0));
+    store64(LO_W2+0*8, ften(1)); store64(LO_W2+1*8, ften(0-1)); store64(LO_W2+2*8, ften(1));
+    store64(LO_W2+3*8, ften(0-1)); store64(LO_W2+4*8, ften(1)); store64(LO_W2+5*8, ften(0-1));
+    store64(LO_b2, ften(0));
+    return 0;
+}
+
+# Forward unroll: fills θ/g/h caches; returns the meta-loss L(φ) = Σ_{t=1}^T ℓ(θ_t).
+fn lo_forward(): i64 {
+    var H=lo_ho(); var T=lo_t();
+    store64(LO_th, LO_th0);
+    var L=f64_from(0); var t=0;
+    while (t < T) {
+        var th = load64(LO_th + t*8);
+        var g = f64_mul(LO_a, f64_sub(th, LO_c));             # ∇ℓ(θ_t) = a(θ_t - c)
+        store64(LO_g + t*8, g); store64(LO_gb, g);
+        var hp = LO_h + t*H*8;
+        linear_fwd(LO_gb, LO_W1, LO_b1, LO_zb, 1, 1, H);      # z = g·W1 + b1
+        var j=0; while (j < H) { store64(hp+j*8, f64_tanh(load64(LO_zb+j*8))); j=j+1; }  # h = tanh(z)
+        linear_fwd(hp, LO_W2, LO_b2, LO_ub, 1, H, 1);         # u = h·W2 + b2
+        var thn = f64_add(th, load64(LO_ub));                 # θ_{t+1} = θ_t + u
+        store64(LO_th + (t+1)*8, thn);
+        var e = f64_sub(thn, LO_c);
+        L = f64_add(L, f64_mul(f64_div(LO_a, f64_from(2)), f64_mul(e, e)));   # += ½a(θ_{t+1}-c)²
+        t = t + 1;
+    }
+    return L;
+}
+
+# BPTT meta-gradient ∂L/∂φ into LO_dW1/LO_db1/LO_dW2/LO_db2.
+fn lo_meta_grad(): i64 {
+    var H=lo_ho(); var T=lo_t();
+    lo_forward();
+    t_zero(LO_dW1,H); t_zero(LO_db1,H); t_zero(LO_dW2,H); t_zero(LO_db2,1);
+    var dth = f64_mul(LO_a, f64_sub(load64(LO_th + T*8), LO_c));    # D_T = a(θ_T - c)
+    var t = T - 1;
+    while (t >= 0) {
+        store64(LO_dub, dth);                                  # du = D_{t+1}
+        var hp = LO_h + t*H*8;
+        linear_bwd(hp, LO_W2, LO_dub, LO_dh, LO_dW2, LO_db2, 1, H, 1);   # dh; dW2+=h·du; db2+=du
+        var j=0;
+        while (j < H) {                                        # dz = dh ⊙ (1 - h²)
+            var hv = load64(hp+j*8);
+            store64(LO_dz+j*8, f64_mul(load64(LO_dh+j*8), f64_sub(f64_from(1), f64_mul(hv,hv))));
+            j = j + 1;
+        }
+        store64(LO_gb, load64(LO_g + t*8));
+        linear_bwd(LO_gb, LO_W1, LO_dz, LO_dgb, LO_dW1, LO_db1, 1, 1, H);  # dg; dW1+=g·dz; db1+=dz
+        var dg = load64(LO_dgb);
+        dth = f64_add(dth, f64_mul(dg, LO_a));                 # D_t += D_{t+1}·(∂u/∂g·a) part
+        if (t >= 1) { dth = f64_add(dth, f64_mul(LO_a, f64_sub(load64(LO_th + t*8), LO_c))); }  # +direct ℓ(θ_t)
+        t = t - 1;
+    }
+    return 0;
+}
+
+fn lo_param_ptr(idx): i64 {
+    var H=lo_ho();
+    if (idx < H) { return LO_W1 + idx*8; }
+    if (idx < 2*H) { return LO_b1 + (idx-H)*8; }
+    if (idx < 3*H) { return LO_W2 + (idx-2*H)*8; }
+    return LO_b2;
+}
+fn lo_grad_val(idx): i64 {
+    var H=lo_ho();
+    if (idx < H) { return load64(LO_dW1 + idx*8); }
+    if (idx < 2*H) { return load64(LO_db1 + (idx-H)*8); }
+    if (idx < 3*H) { return load64(LO_dW2 + (idx-2*H)*8); }
+    return load64(LO_db2);
+}
+fn lo_fd_grad(idx): i64 {
+    var eps = f64_div(f64_from(1), f64_from(100000));          # 1e-5
+    var pp = lo_param_ptr(idx); var o = load64(pp);
+    store64(pp, f64_add(o, eps)); var hi = lo_forward();
+    store64(pp, f64_sub(o, eps)); var lo = lo_forward();
+    store64(pp, o);
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+# Gate: the BPTT meta-grad matches finite-diff on every optimizer param.
+fn lo_gate(): i64 {
+    lo_meta_grad();
+    var ok=1; var i=0; var NP=lo_np();
+    while (i < NP) {
+        if (f64_le(f64_abs(f64_sub(lo_grad_val(i), lo_fd_grad(i))), lo_tol()) == 0) { ok = 0; }
+        i = i + 1;
+    }
+    return ok;
+}

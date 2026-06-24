@@ -10,6 +10,7 @@ include "src/maml.cyr"               # linear-regression MAML on rosnet (M2.a)
 include "src/mlp.cyr"                # 1-hidden-layer tanh MLP + backprop (M2.b.1)
 include "src/mamlnl.cyr"            # nonlinear MAML + R-operator 2nd-order grad (M2.b.2)
 include "src/sine.cyr"              # sine-task few-shot meta-learning + f64_sin (M2.c)
+include "src/lopt.cyr"              # learned optimizer (BPTT through an unroll) (M3)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -192,9 +193,18 @@ fn main() {
         print_f6(diff); puts(")"); nl();
     }
 
+    # ---- M3.a: learned optimizer (Andrychowicz 2016) — BPTT meta-grad FD-gated ----
+    nl();
+    puts("prajna M3.a - learned optimizer (learn the UPDATE RULE), BPTT meta-grad FD-gated"); nl();
+    lo_init();
+    puts("  unroll meta-loss L (T=8, untrained optimizer) = "); print_f6(lo_forward()); nl();
+    var lg = lo_gate();
+    if (lg == 1) { puts("  GATE: PASS (BPTT dL/dphi matches finite-diff on all 19 optimizer params)"); nl(); }
+    else         { puts("  GATE: FAIL"); nl(); }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
     allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
-    allok = allok && (mc_ok==1) && (bench_ok==1);
+    allok = allok && (mc_ok==1) && (bench_ok==1) && (lg==1);
     if (allok) { return 0; }
     return 1;
 }

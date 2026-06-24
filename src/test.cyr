@@ -10,6 +10,7 @@ include "src/maml.cyr"
 include "src/mlp.cyr"
 include "src/mamlnl.cyr"
 include "src/sine.cyr"
+include "src/lopt.cyr"
 
 fn main() {
     alloc_init();
@@ -73,6 +74,10 @@ fn main() {
     var fs = 0;
     while (fs < 150) { sine_train_batch_step_m(12, f64_div(f64_from(5), f64_from(100)), 0); fs = fs + 1; }
     assert(f64_le(sine_eval(8, 7777), fb), "M2.c.3: FOMAML meta-training also reduces held-out loss");
+
+    # ---- M3.a: learned-optimizer BPTT meta-gradient ----
+    lo_init();
+    assert(lo_gate(), "M3.a: learned-optimizer BPTT meta-grad matches finite-diff");
 
     return 0;
 }

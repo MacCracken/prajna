@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **M3.a — learned-optimizer BPTT meta-gradient** (`src/lopt.cyr`): the core of M3, the
+  *second* realization of learn-to-learn — meta-learn the **update rule** (a 1→6→1 tanh net
+  `g_φ` mapping gradient → update), not an initialization. Meta-loss = Σ optimizee losses
+  over an **8-step unrolled** optimization of a quadratic; the meta-gradient `∂L/∂φ` is the
+  hand-derived **BPTT** recurrence `D_t = D_{t+1} + dg·a + [t≥1]·a(θ_t−c)` (the `dg·a` term
+  routes the gradient back through the optimizee Hessian). **FD-gated on all 19 optimizer
+  params** (passed first build). `cyrius test` gates it.
+
 ## [0.2.0] — 2026-06-24
 
 The MAML milestone (M2): the second-order meta-gradient proven from scalar → linear →

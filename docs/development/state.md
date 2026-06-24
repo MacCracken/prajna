@@ -32,11 +32,14 @@ meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
   M2.b.2 gate config.
 - `src/sine.cyr` — **M2.c.1/.2**: sovereign `f64_sin` (range-reduced Taylor) + `f64_pi`;
   sine-task sampler (`sine_sample_task`/`sine_fill`) over `tyche`; `sine_init_params`;
-  `sine_sanity` (3 FD gates at the sine config — generalization); **M2.c.2 meta-training**:
-  `sine_eval` (held-out avg adapt loss), `sine_opt_init` + `sine_train_batch_step`
-  (16-task meta-batch SGD step). `nm_set_alpha` makes the inner lr configurable.
-- `src/main.cyr` — demo: M1 → M2.a → M2.b.1, with per-stage gates. Exit 0 iff all pass.
-- `src/test.cyr` — `[build].test`: asserts M1 + M2.a + M2.b.1 gates.
+  `sine_sanity` (3 FD gates at the sine config — generalization); **M2.c.2/.3**: `sine_eval`,
+  `sine_opt_init`, `sine_train_batch_step_m(full)` (meta-batch SGD; full or FOMAML),
+  `sine_benchmark`. `nm_set_alpha` makes the inner lr configurable.
+- `src/lopt.cyr` — **M3.a**: learned optimizer (1→6→1 tanh `g_φ`, gradient→update) unrolled
+  8 steps on a quadratic optimizee; `lo_forward` (unroll + meta-loss), `lo_meta_grad` (BPTT
+  `∂L/∂φ`), `lo_gate` (FD over 19 params). The 2nd realization of learn-to-learn.
+- `src/main.cyr` — demo: M1 → M2.* → M3.a, per-stage gates. Exit 0 iff all pass.
+- `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
 
 ## Verification (2026-06-24)
 
@@ -56,8 +59,10 @@ meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
   measurably improves few-shot adaptation.
 - **M2.c.3**: full-2nd-order vs FOMAML from identical init+schedule → **statistically
   equivalent** (1.692 vs 1.690, |diff| ~0.1%) — the HVP buys little at this scale (the
-  Finn 2017 FOMAML honest-negative). Demo run exit 0 (all gates + results); `cyrius test`
-  green (FD gates M1/M2.a/M2.b.1/M2.b.2 + meta-training improvement + FOMAML path).
+  Finn 2017 FOMAML honest-negative).
+- **M3.a**: learned-optimizer BPTT meta-grad **matches FD on all 19 optimizer params**
+  (untrained unroll L=32.47, T=8). Demo run exit 0 (all gates + results); `cyrius test`
+  green (all FD gates + M2.c training/FOMAML + M3.a BPTT).
 
 ## Dependencies
 
@@ -73,7 +78,7 @@ _None yet._
 
 ## Next
 
-**M3 — learned optimizer** (→ v0.3.0): meta-learn the *update rule* (a small net that
-emits the step), the second realization of learn-to-learn on the same meta-grad machinery
-("learning to learn by gradient descent by gradient descent", Andrychowicz 2016). See
-[`roadmap.md`](roadmap.md).
+**M3.b** — meta-train the learned optimizer: SGD/Adam over the BPTT meta-grad across sampled
+quadratic optimizees, then show the meta-trained `g_φ` drives the optimizee loss down **faster
+than vanilla SGD** on held-out tasks. (M3.a — the BPTT meta-grad core — landed + FD-gated.)
+See [`roadmap.md`](roadmap.md).

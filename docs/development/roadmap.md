@@ -70,10 +70,18 @@ Scale the primitive from scalar to a real model. Broken into verified sub-bites:
 > scalar → linear → nonlinear (R-operator) and demonstrated on sine few-shot meta-learning.
 
 ### M3 — Learned optimizer (→ v0.3.0)
-The second realization of learn-to-learn on the same meta-grad machinery.
-- A small net meta-trained to emit the update step ("learning to learn by gradient
-  descent by gradient descent", Andrychowicz 2016) — meta-learn the *update rule*
-  rather than the *initialization*.
+The second realization of learn-to-learn: meta-learn the *update rule* (a small net that
+emits the optimization step) rather than the *initialization* ("learning to learn by
+gradient descent by gradient descent", Andrychowicz 2016). Sub-split:
+- **M3.a — the BPTT meta-gradient core — ✅ landed 2026-06-24** (`src/lopt.cyr`): a 1→6→1
+  tanh optimizer `g_φ` (gradient → update), unrolled 8 steps on a quadratic optimizee;
+  meta-loss = Σ optimizee losses; meta-grad `∂L/∂φ` via the hand-derived **BPTT** recurrence
+  (`dg·a` routes through the optimizee Hessian). **FD-gated on all 19 params** (first build).
+- **M3.b — meta-train the optimizer + demonstrate it learns to optimize** (next): meta-train
+  `φ` (SGD/Adam over the BPTT grad) across sampled quadratics; show the meta-trained optimizer
+  drives the optimizee loss down **faster than vanilla SGD** on held-out tasks.
+- **M3.c** (optional): scale to multi-coordinate optimizees / a recurrent (LSTM) optimizer,
+  the Andrychowicz canonical.
 
 ### M4 — Text few-shot / attn11 tie-in (→ v0.4.0)
 - **Dep gate**: add `akshara` (tokenizer). Meta-learn over a tiny LM few-shot task —
