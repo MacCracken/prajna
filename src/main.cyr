@@ -172,8 +172,29 @@ fn main() {
     if (mc_ok == 1) { puts("  RESULT: PASS - meta-training improves few-shot adaptation"); nl(); }
     else            { puts("  RESULT: FAIL - no improvement"); nl(); }
 
+    # ---- M2.c.3: benchmark full 2nd-order vs FOMAML (honest-negative) ----
+    nl();
+    puts("prajna M2.c.3 - benchmark: full 2nd-order vs FOMAML (identical init+schedule)"); nl();
+    var l_full = sine_benchmark(1);
+    var l_fom  = sine_benchmark(0);
+    puts("  final held-out adapt loss, full 2nd-order = "); print_f6(l_full); nl();
+    puts("  final held-out adapt loss, FOMAML (1st)   = "); print_f6(l_fom); nl();
+    # both must meta-learn (clear gain over the ~2.48 random-init baseline)
+    var bench_ok = (f64_le(l_full, mc_before) == 1) && (f64_le(l_fom, mc_before) == 1);
+    var diff = f64_abs(f64_sub(l_full, l_fom));
+    var tie = f64_div(f64_from(5), f64_from(100));      # 0.05 tie band
+    if (f64_le(diff, tie) == 1) {
+        puts("  FINDING: full 2nd-order ~= FOMAML at this scale (|diff| = ");
+        print_f6(diff); puts(") - the HVP buys little here (honest-negative, cf. Finn 2017)"); nl();
+    } else {
+        if (f64_le(l_full, l_fom) == 1) { puts("  FINDING: full 2nd-order beats FOMAML (diff = "); }
+        else                            { puts("  FINDING: FOMAML beats full 2nd-order (diff = "); }
+        print_f6(diff); puts(")"); nl();
+    }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
-    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1) && (mc_ok==1);
+    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
+    allok = allok && (mc_ok==1) && (bench_ok==1);
     if (allok) { return 0; }
     return 1;
 }

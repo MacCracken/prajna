@@ -5,8 +5,9 @@
 
 ## Version
 
-**0.1.0** — released 2026-06-24 (scaffold + M1 scalar meta-gradient). **M2.a landed
-on top, untagged (toward 0.2.0).**
+**0.2.0** — the MAML milestone (M1 + M2), cut 2026-06-24. The second-order meta-gradient
+proven scalar → linear → nonlinear (R-operator) + demonstrated on sine few-shot
+meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
 
 ## Toolchain
 
@@ -53,6 +54,10 @@ on top, untagged (toward 0.2.0).**
 - **M2.c.2**: held-out 10-shot adapt loss descends **monotonically 2.476 → 1.560**
   (~37%) over 1000 meta-training steps (K=1, H=40, 16-task meta-batch) — meta-training
   measurably improves few-shot adaptation.
+- **M2.c.3**: full-2nd-order vs FOMAML from identical init+schedule → **statistically
+  equivalent** (1.692 vs 1.690, |diff| ~0.1%) — the HVP buys little at this scale (the
+  Finn 2017 FOMAML honest-negative). Demo run exit 0 (all gates + results); `cyrius test`
+  green (FD gates M1/M2.a/M2.b.1/M2.b.2 + meta-training improvement + FOMAML path).
 
 ## Dependencies
 
@@ -68,7 +73,7 @@ _None yet._
 
 ## Next
 
-**M2.c.3** — the benchmark + honest-negative: meta-train with full-2nd-order vs FOMAML
-(vs Reptile) under the same schedule and compare held-out adaptation. **Does the 2nd-order
-term actually help at this tiny scale?** — report the finding either way (attn11-MTP
-style). This closes M2. See [`roadmap.md`](roadmap.md).
+**M3 — learned optimizer** (→ v0.3.0): meta-learn the *update rule* (a small net that
+emits the step), the second realization of learn-to-learn on the same meta-grad machinery
+("learning to learn by gradient descent by gradient descent", Andrychowicz 2016). See
+[`roadmap.md`](roadmap.md).

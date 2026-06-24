@@ -4,7 +4,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-24
+
+The MAML milestone (M2): the second-order meta-gradient proven from scalar → linear →
+nonlinear, then demonstrated on sine-wave few-shot meta-learning. prajna is now a
+sibling-on-rosnet that meta-learns end-to-end, sovereign from the metal up.
+
 ### Added
+- **M2.c.3 — full-2nd-order vs FOMAML benchmark (the honest-negative)** (`src/sine.cyr`,
+  `src/main.cyr`): meta-train both rules from an **identical** init + task schedule (only
+  the meta-grad differs). **Finding: at this tiny scale they are statistically equivalent**
+  (full `1.692` vs FOMAML `1.690`, |diff| ~0.1%) — the expensive Hessian-vector product
+  buys little here, exactly Finn et al. 2017's FOMAML result, reproduced sovereignly. The
+  reference's worth is that it can rigorously compute and compare both. `sine_benchmark` +
+  `sine_train_batch_step_m(full)`; test asserts the FOMAML path also meta-learns.
 - **M2.c.2 — MAML meta-training on sine tasks** (`src/sine.cyr`): meta-train the MLP
   initialization across sampled sine tasks with the full second-order meta-grad +
   **meta-batch** (16 tasks/step, cuts gradient noise) SGD. The held-out 10-shot

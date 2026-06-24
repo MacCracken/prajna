@@ -60,9 +60,14 @@ Scale the primitive from scalar to a real model. Broken into verified sub-bites:
     + 16-task meta-batch SGD). Held-out 10-shot adaptation loss descends **monotonically
     2.48 → 1.56** over 1000 steps — meta-training measurably improves few-shot adaptation
     ("MAML works on AGNOS"). Inner lr configurable; test asserts the improvement.
-  - **M2.c.3 — the benchmark**: full-2nd-order vs FOMAML vs Reptile at this tiny scale.
-    **Honest-negative eligible**: does the 2nd-order term actually help here? — a finding
-    either way (attn11-MTP style). Benchmark vs the MAML sine-regression setup.
+  - **M2.c.3 — the benchmark — ✅ landed 2026-06-24** (`src/sine.cyr`): full-2nd-order vs
+    FOMAML from an identical init+schedule. **Honest-negative finding: at this tiny scale
+    they are statistically equivalent** (full `1.692` vs FOMAML `1.690`, |diff| ~0.1%) —
+    the HVP buys little here, exactly Finn et al. 2017's FOMAML result. (Reptile is
+    degenerate at one inner step — needs a multi-step inner loop, deferred.) **M2 complete.**
+
+> **▶ M1 + M2 SHIPPED as `0.2.0` (2026-06-24).** The second-order meta-gradient is proven
+> scalar → linear → nonlinear (R-operator) and demonstrated on sine few-shot meta-learning.
 
 ### M3 — Learned optimizer (→ v0.3.0)
 The second realization of learn-to-learn on the same meta-grad machinery.

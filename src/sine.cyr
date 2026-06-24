@@ -99,19 +99,25 @@ fn sine_eval(ntasks, seed): i64 {
 var sineAcc = 0;
 fn sine_opt_init(): i64 { sineAcc = t_alloc(nm_np()); return 0; }
 
-# One META-BATCH outer step: average the full second-order meta-grad over B sampled tasks
-# (cuts the single-task gradient noise), then SGD-update θ in place. Returns the batch's
-# average pre-update adapt loss. SILENT (test.cyr drives the loop without print helpers).
-fn sine_train_batch_step(B, mlr): i64 {
+# One META-BATCH outer step: average the meta-grad over B sampled tasks (cuts single-task
+# noise), then SGD-update θ in place. full=1 -> full second-order meta-grad (gθ'-α·H·gθ');
+# full=0 -> FOMAML (gθ' only, the first-order approximation). Returns the batch avg adapt
+# loss. SILENT (test.cyr drives the loop without print helpers).
+fn sine_train_batch_step_m(B, mlr, full): i64 {
     var NP = nm_np();
     var j = 0; while (j < NP) { store64(sineAcc+j*8, f64_from(0)); j = j + 1; }
     var Lsum = f64_from(0); var b = 0;
     while (b < B) {
         sine_sample_task();
         Lsum = f64_add(Lsum, nm_meta_loss());
-        nm_meta_grad();
+        nm_meta_grad();                                  # computes No* (full) + Ngq* (FOMAML)
         j = 0;
-        while (j < NP) { store64(sineAcc+j*8, f64_add(load64(sineAcc+j*8), nm_meta_val(j))); j = j + 1; }
+        while (j < NP) {
+            var g = nm_meta_val(j);
+            if (full == 0) { g = nm_fomaml_val(j); }
+            store64(sineAcc+j*8, f64_add(load64(sineAcc+j*8), g));
+            j = j + 1;
+        }
         b = b + 1;
     }
     var scale = f64_div(mlr, f64_from(B));
@@ -122,4 +128,21 @@ fn sine_train_batch_step(B, mlr): i64 {
         j = j + 1;
     }
     return f64_div(Lsum, f64_from(B));
+}
+fn sine_train_batch_step(B, mlr): i64 { return sine_train_batch_step_m(B, mlr, 1); }
+
+# M2.c.3 benchmark: meta-train (full or FOMAML) from an IDENTICAL init + task schedule,
+# return the final held-out 10-shot adapt loss. The ONLY difference between the two runs is
+# the meta-grad rule -> a clean controlled comparison.
+fn sine_benchmark(full): i64 {
+    nm_config(1, 40, 10, 10); sine_opt_init();
+    rng_seed(1001); sine_init_params();
+    var mlr = f64_div(f64_from(5), f64_from(100));       # 0.05
+    var chunk = 0;
+    while (chunk < 6) {
+        rng_seed(2002 + chunk);
+        var s = 0; while (s < 100) { sine_train_batch_step_m(16, mlr, full); s = s + 1; }
+        chunk = chunk + 1;
+    }
+    return sine_eval(20, 7777);
 }

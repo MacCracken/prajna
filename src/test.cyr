@@ -64,6 +64,16 @@ fn main() {
     }
     assert(f64_le(sine_eval(10, 7777), mcb), "M2.c.2: meta-training reduces held-out adapt loss");
 
+    # ---- M2.c.3: the FOMAML (first-order) training path also meta-learns ----
+    nm_config(1, 16, 6, 6);
+    sine_opt_init();
+    rng_seed(1001); sine_init_params();
+    var fb = sine_eval(8, 7777);
+    rng_seed(2002);
+    var fs = 0;
+    while (fs < 150) { sine_train_batch_step_m(12, f64_div(f64_from(5), f64_from(100)), 0); fs = fs + 1; }
+    assert(f64_le(sine_eval(8, 7777), fb), "M2.c.3: FOMAML meta-training also reduces held-out loss");
+
     return 0;
 }
 
