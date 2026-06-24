@@ -43,11 +43,12 @@ Scale the primitive from scalar to a real model. Broken into verified sub-bites:
   - **M2.b.1 — tanh MLP forward + first-order backprop — ✅ landed 2026-06-24**
     (`src/mlp.cyr`): K=2→H=3→1 tanh MLP on rosnet; hand-derived ∇Ls **FD-gated on all
     13 params**. Added the `ganita` stdlib module (`f64_tanh`). The nonlinear foundation.
-  - **M2.b.2 — the R-operator HVP / double-backward** (next): the support-loss
-    Hessian is now θ-dependent, so hand-derive the Hessian-vector product `H_s·v` via
-    the Pearlmutter R-operator (forward-mode over the gradient), then the full
-    second-order meta-grad `gθ' − α·(H_s·gθ')` through the MLP's inner step. FD-gate at
-    three levels: ∇Ls, the HVP (vs FD-of-gradient), and the meta-grad (vs FD-of-meta-loss).
+  - **M2.b.2 — the R-operator HVP / double-backward — ✅ landed 2026-06-24**
+    (`src/mamlnl.cyr`): the θ-dependent Hessian's HVP `H_s·v` via the hand-derived
+    **Pearlmutter R-operator**, then the full second-order meta-grad `gθ' − α·(H_s·gθ')`
+    through the MLP's inner step. Equations confirmed three ways + NumPy FD cross-check;
+    **three-level FD gate all green** (∇Ls / HVP-vs-FD-of-gradient / meta-grad-vs-FD-of-
+    meta-loss); FOMAML observably differs; meta-descent monotone. **M2.b complete.**
 - **M2.c — sine-task sampling + meta-training + demo**: sample sine tasks with `tyche`;
   meta-train an initialization; show K-shot fast adaptation beats a non-meta baseline;
   benchmark vs the MAML paper's sine-regression setup (B-series fairness rules).

@@ -8,6 +8,7 @@ include "lib/rosnet.cyr"
 include "src/meta.cyr"
 include "src/maml.cyr"
 include "src/mlp.cyr"
+include "src/mamlnl.cyr"
 
 fn main() {
     alloc_init();
@@ -36,6 +37,13 @@ fn main() {
     # ---- M2.b.1: tanh MLP first-order backprop on rosnet ----
     mlp_init();
     assert(mlp_grad_gate(), "M2.b.1: MLP hand-derived backprop matches finite-diff");
+
+    # ---- M2.b.2: nonlinear MAML + R-operator second-order meta-gradient ----
+    nm_init();
+    assert(nm_grad_gate(), "M2.b.2: ∇Ls matches finite-diff (gate 1)");
+    assert(nm_hvp_gate(), "M2.b.2: R-operator HVP matches FD-of-gradient (gate 2)");
+    assert(nm_meta_grad_gate(), "M2.b.2: 2nd-order meta-grad matches FD-of-meta-loss (gate 3)");
+    assert(nm_2nd_observable(), "M2.b.2: FOMAML differs from FD (θ-dependent 2nd-order term is real)");
 
     return 0;
 }

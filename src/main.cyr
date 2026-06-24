@@ -8,6 +8,7 @@ include "lib/rosnet.cyr"            # t_alloc / linear_fwd / linear_bwd / t_axpy
 include "src/meta.cyr"               # the scalar meta-gradient core (M1)
 include "src/maml.cyr"               # linear-regression MAML on rosnet (M2.a)
 include "src/mlp.cyr"                # 1-hidden-layer tanh MLP + backprop (M2.b.1)
+include "src/mamlnl.cyr"            # nonlinear MAML + R-operator 2nd-order grad (M2.b.2)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -105,9 +106,40 @@ fn main() {
     var gok = mlp_grad_gate();
     if (gok == 1) { puts("  GRAD-GATE: PASS  (analytic ∇Ls matches finite-diff on all 13 params)"); nl(); }
     else          { puts("  GRAD-GATE: FAIL"); nl(); }
-    puts("  (the θ-dependent Hessian this nonlinearity introduces is M2.b.2's HVP)"); nl();
 
-    if ((ok == 1) && (obs == 1) && (mok == 1) && (mobs == 1) && (gok == 1)) { return 0; }
+    # ---- M2.b.2: nonlinear MAML + R-operator second-order meta-gradient ----
+    nl();
+    puts("prajna M2.b.2 - nonlinear MAML on rosnet, 2nd-order meta-grad (R-operator)"); nl();
+    nm_init();
+    var g1 = nm_grad_gate();
+    var g2 = nm_hvp_gate();
+    var g3 = nm_meta_grad_gate();
+    var g4 = nm_2nd_observable();
+    if (g1 == 1) { puts("  GATE 1 (∇Ls)      : PASS"); nl(); } else { puts("  GATE 1 (∇Ls)      : FAIL"); nl(); }
+    if (g2 == 1) { puts("  GATE 2 (HVP=H.v)  : PASS (R-operator matches FD-of-gradient)"); nl(); }
+    else { puts("  GATE 2 (HVP=H.v)  : FAIL"); nl(); }
+    if (g3 == 1) { puts("  GATE 3 (meta-grad): PASS (full 2nd-order matches FD-meta-loss)"); nl(); }
+    else { puts("  GATE 3 (meta-grad): FAIL"); nl(); }
+    if (g4 == 1) { puts("  2nd-ORD: OBSERVABLE (FOMAML differs from FD -> theta-dep Hessian real)"); nl(); }
+    else { puts("  2nd-ORD: not observable"); nl(); }
+    # meta-descent on the nonlinear model
+    puts("  meta-descent (lr=0.3):"); nl();
+    var ns = 0;
+    while (ns < 5) {
+        puts("    step "); fmt_int(ns); puts("  meta_loss="); print_f6(nm_meta_loss()); nl();
+        nm_meta_grad();
+        var nlr = f64_div(f64_from(3), f64_from(10));
+        t_axpy(NW1, NoW1, f64_sub(f64_from(0), nlr), nm_k()*nm_h());
+        t_axpy(Nb1, Nob1, f64_sub(f64_from(0), nlr), nm_h());
+        t_axpy(NW2, NoW2, f64_sub(f64_from(0), nlr), nm_h());
+        store64(Nb2, f64_sub(load64(Nb2), f64_mul(nlr, load64(Nob2))));
+        ns = ns + 1;
+    }
+    puts("    final     meta_loss="); print_f6(nm_meta_loss()); nl();
+
+    var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
+    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1);
+    if (allok) { return 0; }
     return 1;
 }
 

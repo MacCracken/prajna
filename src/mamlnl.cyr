@@ -1,0 +1,293 @@
+# prajna — M2.b.2: nonlinear MAML (1-hidden-layer tanh MLP) on rosnet, with the
+# SECOND-ORDER meta-gradient via the Pearlmutter R-operator. The θ-dependent Hessian
+# (the tanh) means M2.a's constant-HVP shortcut is dead; the HVP H_s·v is computed by
+# forward-mode differentiation propagated through the gradient computation.
+#
+# Derivation independently confirmed three ways (R-operator / direct-unroll /
+# graph-backprop) + a NumPy finite-difference HVP cross-check (2026-06-24). Canonical set:
+#   R-FWD:   RZ = X·vW1 + vb1 ; RA = (1-A²)⊙RZ ; RY = RA·W2 + A·vW2 + vb2
+#   R-REV:   RdY = RY/M
+#            RgW2 = RAᵀ·dY + Aᵀ·RdY ;  Rgb2 = Σ RdY
+#            RdA  = RdY·W2ᵀ + dY·vW2ᵀ
+#            RdZ  = RdA⊙(1-A²) - 2·(dA⊙A⊙RA)
+#            RgW1 = Xᵀ·RdZ ;  Rgb1 = Σ RdZ
+#   H_s·v = (RgW1,Rgb1,RgW2,Rgb2) ;  meta-grad = gq' - α·(H_s·gq'),  v := gq'.
+# Three-level FD gate: ∇Ls, the HVP (vs FD-of-gradient), and the meta-grad.
+
+fn nm_k(): i64 { return 2; }
+fn nm_h(): i64 { return 3; }
+fn nm_ms(): i64 { return 4; }
+fn nm_mq(): i64 { return 4; }
+fn nm_np(): i64 { return nm_k()*nm_h() + nm_h() + nm_h() + 1; }   # 13
+fn nm_alpha(): i64 { return f64_div(f64_from(1), f64_from(10)); } # 0.1
+fn nm_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }# 1e-4
+
+# params / data / direction
+var NW1=0; var Nb1=0; var NW2=0; var Nb2=0;
+var NXs=0; var NTs=0; var NXq=0; var NTq=0;
+var NvW1=0; var Nvb1=0; var NvW2=0; var Nvb2=0;
+# support (at θ): forward + reverse + cached intermediates
+var NZs=0; var NAs=0; var NYs=0; var NdYs=0; var NdAs=0; var NdZs=0;
+var NgW1s=0; var Ngb1s=0; var NgW2s=0; var Ngb2s=0;
+# adapted θ'
+var NW1p=0; var Nb1p=0; var NW2p=0; var Nb2p=0;
+# query (at θ'): forward + reverse -> gq'
+var NZq=0; var NAq=0; var NYq=0; var NdYq=0; var NdAq=0; var NdZq=0;
+var NgqW1=0; var Ngqb1=0; var NgqW2=0; var Ngqb2=0;
+# R-pass -> H_s·v
+var NRZ=0; var NRA=0; var NRY=0; var NRdY=0; var NRdA=0; var NRdZ=0;
+var NhW1=0; var Nhb1=0; var NhW2=0; var Nhb2=0;
+# dumps / meta-grad / FD scratch
+var NdxD=0; var NdWD=0; var Ntmp=0;
+var NoW1=0; var Nob1=0; var NoW2=0; var Nob2=0;
+var Norig=0; var Ngp=0; var Ngm=0;
+
+fn nm_init(): i64 {
+    var K=nm_k(); var H=nm_h(); var Ms=nm_ms(); var Mq=nm_mq(); var NP=nm_np();
+    NW1=t_alloc(K*H); Nb1=t_alloc(H); NW2=t_alloc(H); Nb2=t_alloc(1);
+    NXs=t_alloc(Ms*K); NTs=t_alloc(Ms); NXq=t_alloc(Mq*K); NTq=t_alloc(Mq);
+    NvW1=t_alloc(K*H); Nvb1=t_alloc(H); NvW2=t_alloc(H); Nvb2=t_alloc(1);
+    NZs=t_alloc(Ms*H); NAs=t_alloc(Ms*H); NYs=t_alloc(Ms); NdYs=t_alloc(Ms);
+    NdAs=t_alloc(Ms*H); NdZs=t_alloc(Ms*H);
+    NgW1s=t_alloc(K*H); Ngb1s=t_alloc(H); NgW2s=t_alloc(H); Ngb2s=t_alloc(1);
+    NW1p=t_alloc(K*H); Nb1p=t_alloc(H); NW2p=t_alloc(H); Nb2p=t_alloc(1);
+    NZq=t_alloc(Mq*H); NAq=t_alloc(Mq*H); NYq=t_alloc(Mq); NdYq=t_alloc(Mq);
+    NdAq=t_alloc(Mq*H); NdZq=t_alloc(Mq*H);
+    NgqW1=t_alloc(K*H); Ngqb1=t_alloc(H); NgqW2=t_alloc(H); Ngqb2=t_alloc(1);
+    NRZ=t_alloc(Ms*H); NRA=t_alloc(Ms*H); NRY=t_alloc(Ms); NRdY=t_alloc(Ms);
+    NRdA=t_alloc(Ms*H); NRdZ=t_alloc(Ms*H);
+    NhW1=t_alloc(K*H); Nhb1=t_alloc(H); NhW2=t_alloc(H); Nhb2=t_alloc(1);
+    NdxD=t_alloc(Ms*H); NdWD=t_alloc(K*H); Ntmp=t_alloc(Ms*H);
+    NoW1=t_alloc(K*H); Nob1=t_alloc(H); NoW2=t_alloc(H); Nob2=t_alloc(1);
+    Norig=t_alloc(NP); Ngp=t_alloc(NP); Ngm=t_alloc(NP);
+
+    # params θ (reuse mlp.cyr's ften: n/10)
+    store64(NW1+0*8, ften(2)); store64(NW1+1*8, ften(0-1)); store64(NW1+2*8, ften(3));
+    store64(NW1+3*8, ften(0-2)); store64(NW1+4*8, ften(1)); store64(NW1+5*8, ften(0-3));
+    store64(Nb1+0*8, ften(1)); store64(Nb1+1*8, ften(0-1)); store64(Nb1+2*8, ften(2));
+    store64(NW2+0*8, ften(4)); store64(NW2+1*8, ften(0-3)); store64(NW2+2*8, ften(2));
+    store64(Nb2, ften(1));
+    # support data
+    store64(NXs+0*8, ften(5)); store64(NXs+1*8, ften(10)); store64(NXs+2*8, ften(10));
+    store64(NXs+3*8, ften(0-5)); store64(NXs+4*8, ften(0-5)); store64(NXs+5*8, ften(5));
+    store64(NXs+6*8, ften(10)); store64(NXs+7*8, ften(10));
+    store64(NTs+0*8, ften(3)); store64(NTs+1*8, ften(0-2)); store64(NTs+2*8, ften(4)); store64(NTs+3*8, ften(1));
+    # query data
+    store64(NXq+0*8, ften(10)); store64(NXq+1*8, ften(5)); store64(NXq+2*8, ften(0-5));
+    store64(NXq+3*8, ften(10)); store64(NXq+4*8, ften(5)); store64(NXq+5*8, ften(0-5));
+    store64(NXq+6*8, ften(5)); store64(NXq+7*8, ften(10));
+    store64(NTq+0*8, ften(2)); store64(NTq+1*8, ften(3)); store64(NTq+2*8, ften(0-1)); store64(NTq+3*8, ften(4));
+    # fixed HVP-test direction v
+    store64(NvW1+0*8, ften(1)); store64(NvW1+1*8, ften(2)); store64(NvW1+2*8, ften(0-1));
+    store64(NvW1+3*8, ften(3)); store64(NvW1+4*8, ften(0-2)); store64(NvW1+5*8, ften(1));
+    store64(Nvb1+0*8, ften(1)); store64(Nvb1+1*8, ften(0-1)); store64(Nvb1+2*8, ften(2));
+    store64(NvW2+0*8, ften(2)); store64(NvW2+1*8, ften(1)); store64(NvW2+2*8, ften(0-1));
+    store64(Nvb2, ften(1));
+    return 0;
+}
+
+# --- support forward+reverse at θ: ∇Ls into Ng*s, caches NAs/NdAs/NdYs ---
+fn nm_support_fwd_grad(): i64 {
+    var K=nm_k(); var H=nm_h(); var M=nm_ms(); var n=M*H;
+    linear_fwd(NXs, NW1, Nb1, NZs, M, K, H);
+    var i=0; while (i<n) { store64(NAs+i*8, f64_tanh(load64(NZs+i*8))); i=i+1; }
+    linear_fwd(NAs, NW2, Nb2, NYs, M, H, 1);
+    i=0; while (i<M) { store64(NdYs+i*8, f64_div(f64_sub(load64(NYs+i*8),load64(NTs+i*8)), f64_from(M))); i=i+1; }
+    t_zero(NgW2s,H); t_zero(Ngb2s,1);
+    linear_bwd(NAs, NW2, NdYs, NdAs, NgW2s, Ngb2s, M, H, 1);
+    i=0;
+    while (i<n) {
+        var a=load64(NAs+i*8);
+        store64(NdZs+i*8, f64_mul(load64(NdAs+i*8), f64_sub(f64_from(1), f64_mul(a,a))));
+        i=i+1;
+    }
+    t_zero(NgW1s,K*H); t_zero(Ngb1s,H);
+    linear_bwd(NXs, NW1, NdZs, NdxD, NgW1s, Ngb1s, M, K, H);
+    return 0;
+}
+fn nm_support_loss(): i64 {            # forward-only Ls at θ
+    var K=nm_k(); var H=nm_h(); var M=nm_ms(); var n=M*H;
+    linear_fwd(NXs, NW1, Nb1, NZs, M, K, H);
+    var i=0; while (i<n) { store64(NAs+i*8, f64_tanh(load64(NZs+i*8))); i=i+1; }
+    linear_fwd(NAs, NW2, Nb2, NYs, M, H, 1);
+    var L=f64_from(0); i=0;
+    while (i<M) { var r=f64_sub(load64(NYs+i*8),load64(NTs+i*8)); L=f64_add(L,f64_mul(r,r)); i=i+1; }
+    return f64_div(L, f64_mul(f64_from(2), f64_from(M)));
+}
+fn nm_adapt(): i64 {                   # θ' = θ - α∇Ls  (needs nm_support_fwd_grad first)
+    var K=nm_k(); var H=nm_h(); var nega=f64_sub(f64_from(0), nm_alpha());
+    t_copy(NW1p,NW1,K*H); t_axpy(NW1p,NgW1s,nega,K*H);
+    t_copy(Nb1p,Nb1,H);   t_axpy(Nb1p,Ngb1s,nega,H);
+    t_copy(NW2p,NW2,H);   t_axpy(NW2p,NgW2s,nega,H);
+    store64(Nb2p, f64_sub(load64(Nb2), f64_mul(nm_alpha(), load64(Ngb2s))));
+    return 0;
+}
+fn nm_query_grad_adapted(): i64 {      # gq' = ∇_{θ'} Lq  (on query at θ')
+    var K=nm_k(); var H=nm_h(); var M=nm_mq(); var n=M*H;
+    linear_fwd(NXq, NW1p, Nb1p, NZq, M, K, H);
+    var i=0; while (i<n) { store64(NAq+i*8, f64_tanh(load64(NZq+i*8))); i=i+1; }
+    linear_fwd(NAq, NW2p, Nb2p, NYq, M, H, 1);
+    i=0; while (i<M) { store64(NdYq+i*8, f64_div(f64_sub(load64(NYq+i*8),load64(NTq+i*8)), f64_from(M))); i=i+1; }
+    t_zero(NgqW2,H); t_zero(Ngqb2,1);
+    linear_bwd(NAq, NW2p, NdYq, NdAq, NgqW2, Ngqb2, M, H, 1);
+    i=0;
+    while (i<n) {
+        var a=load64(NAq+i*8);
+        store64(NdZq+i*8, f64_mul(load64(NdAq+i*8), f64_sub(f64_from(1), f64_mul(a,a))));
+        i=i+1;
+    }
+    t_zero(NgqW1,K*H); t_zero(Ngqb1,H);
+    linear_bwd(NXq, NW1p, NdZq, NdxD, NgqW1, Ngqb1, M, K, H);
+    return 0;
+}
+fn nm_meta_loss(): i64 {               # Lq(θ') — full recompute (for FD)
+    var K=nm_k(); var H=nm_h(); var M=nm_mq(); var n=M*H;
+    nm_support_fwd_grad(); nm_adapt();
+    linear_fwd(NXq, NW1p, Nb1p, NZq, M, K, H);
+    var i=0; while (i<n) { store64(NAq+i*8, f64_tanh(load64(NZq+i*8))); i=i+1; }
+    linear_fwd(NAq, NW2p, Nb2p, NYq, M, H, 1);
+    var L=f64_from(0); i=0;
+    while (i<M) { var r=f64_sub(load64(NYq+i*8),load64(NTq+i*8)); L=f64_add(L,f64_mul(r,r)); i=i+1; }
+    return f64_div(L, f64_mul(f64_from(2), f64_from(M)));
+}
+
+# --- R-operator: H_s·v into Nh*, using cached support NAs/NdAs/NdYs at θ ---
+fn nm_rpass(vW1, vb1, vW2, vb2): i64 {
+    var K=nm_k(); var H=nm_h(); var M=nm_ms(); var n=M*H;
+    # R-FORWARD
+    linear_fwd(NXs, vW1, vb1, NRZ, M, K, H);                          # RZ = X·vW1 + vb1
+    var i=0;
+    while (i<n) {
+        var a=load64(NAs+i*8);
+        store64(NRA+i*8, f64_mul(f64_sub(f64_from(1),f64_mul(a,a)), load64(NRZ+i*8)));
+        i=i+1;
+    }
+    linear_fwd(NRA, NW2, vb2, NRY, M, H, 1);                          # RA·W2 + vb2
+    linear_fwd(NAs, vW2, 0, Ntmp, M, H, 1);                          # A·vW2
+    t_add_into(NRY, Ntmp, M);                                        # RY = RA·W2 + vb2 + A·vW2
+    # R-REVERSE
+    i=0; while (i<M) { store64(NRdY+i*8, f64_div(load64(NRY+i*8), f64_from(M))); i=i+1; }
+    t_zero(NhW2,H);
+    linear_bwd(NRA, NW2, NdYs, NdxD, NhW2, 0, M, H, 1);               # NhW2 += RAᵀ·dY
+    linear_bwd(NAs, NW2, NRdY, NdxD, NhW2, 0, M, H, 1);               # NhW2 += Aᵀ·RdY
+    store64(Nhb2, t_sum(NRdY, M));                                   # Rgb2 = Σ RdY
+    linear_bwd(NAs, NW2, NRdY, NRdA, NdWD, 0, M, H, 1);              # RdA = RdY·W2ᵀ
+    linear_bwd(NAs, vW2, NdYs, Ntmp, NdWD, 0, M, H, 1);              # tmp = dY·vW2ᵀ
+    t_add_into(NRdA, Ntmp, n);                                       # RdA = RdY·W2ᵀ + dY·vW2ᵀ
+    i=0;
+    while (i<n) {                                                    # RdZ = RdA⊙(1-A²) - 2·(dA⊙A⊙RA)
+        var a=load64(NAs+i*8);
+        var t1=f64_mul(load64(NRdA+i*8), f64_sub(f64_from(1), f64_mul(a,a)));
+        var t2=f64_mul(f64_mul(f64_from(2), load64(NdAs+i*8)), f64_mul(a, load64(NRA+i*8)));
+        store64(NRdZ+i*8, f64_sub(t1, t2));
+        i=i+1;
+    }
+    t_zero(NhW1,K*H); t_zero(Nhb1,H);
+    linear_bwd(NXs, NW1, NRdZ, NdxD, NhW1, Nhb1, M, K, H);            # RgW1 = Xᵀ·RdZ, Rgb1 = Σ RdZ
+    return 0;
+}
+
+# --- full second-order meta-grad into No* ---
+fn nm_meta_grad(): i64 {
+    var K=nm_k(); var H=nm_h(); var nega=f64_sub(f64_from(0), nm_alpha());
+    nm_support_fwd_grad();                                            # ∇Ls + cache (at θ)
+    nm_adapt();                                                      # θ'
+    nm_query_grad_adapted();                                        # gq'
+    nm_rpass(NgqW1, Ngqb1, NgqW2, Ngqb2);                            # H_s·gq' -> Nh*
+    t_copy(NoW1,NgqW1,K*H); t_axpy(NoW1,NhW1,nega,K*H);
+    t_copy(Nob1,Ngqb1,H);   t_axpy(Nob1,Nhb1,nega,H);
+    t_copy(NoW2,NgqW2,H);   t_axpy(NoW2,NhW2,nega,H);
+    store64(Nob2, f64_sub(load64(Ngqb2), f64_mul(nm_alpha(), load64(Nhb2))));
+    return 0;
+}
+
+# --- addressing helpers (param order: W1[KH], b1[H], W2[H], b2) ---
+fn nm_param_ptr(idx): i64 {
+    var KH=nm_k()*nm_h(); var H=nm_h();
+    if (idx<KH) { return NW1+idx*8; }
+    if (idx<KH+H) { return Nb1+(idx-KH)*8; }
+    if (idx<KH+H+H) { return NW2+(idx-KH-H)*8; }
+    return Nb2;
+}
+fn nm_at(base1, base2, base3, base4, idx): i64 {
+    var KH=nm_k()*nm_h(); var H=nm_h();
+    if (idx<KH) { return load64(base1+idx*8); }
+    if (idx<KH+H) { return load64(base2+(idx-KH)*8); }
+    if (idx<KH+H+H) { return load64(base3+(idx-KH-H)*8); }
+    return load64(base4);
+}
+fn nm_v_val(idx): i64 { return nm_at(NvW1,Nvb1,NvW2,Nvb2, idx); }
+fn nm_lsgrad_val(idx): i64 { return nm_at(NgW1s,Ngb1s,NgW2s,Ngb2s, idx); }
+fn nm_hvp_val(idx): i64 { return nm_at(NhW1,Nhb1,NhW2,Nhb2, idx); }
+fn nm_meta_val(idx): i64 { return nm_at(NoW1,Nob1,NoW2,Nob2, idx); }
+fn nm_fomaml_val(idx): i64 { return nm_at(NgqW1,Ngqb1,NgqW2,Ngqb2, idx); }
+
+# --- GATE 1: ∇Ls matches FD of Ls ---
+fn nm_grad_gate(): i64 {
+    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000));
+    nm_support_fwd_grad();
+    var ok=1; var i=0;
+    while (i<NP) {
+        var pp=nm_param_ptr(i); var o=load64(pp);
+        store64(pp, f64_add(o,eps)); var hi=nm_support_loss();
+        store64(pp, f64_sub(o,eps)); var lo=nm_support_loss();
+        store64(pp, o);
+        var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+        if (f64_le(f64_abs(f64_sub(nm_lsgrad_val(i), fd)), nm_tol())==0) { ok=0; }
+        i=i+1;
+    }
+    return ok;
+}
+# --- GATE 2: H_s·v matches FD-of-gradient (isolates the R-pass) ---
+fn nm_hvp_gate(): i64 {
+    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000));
+    nm_support_fwd_grad();
+    nm_rpass(NvW1,Nvb1,NvW2,Nvb2);                                   # Nh* = H·v (before any perturb)
+    var i=0; while (i<NP) { store64(Norig+i*8, load64(nm_param_ptr(i))); i=i+1; }
+    i=0; while (i<NP) { store64(nm_param_ptr(i), f64_add(load64(Norig+i*8), f64_mul(eps, nm_v_val(i)))); i=i+1; }
+    nm_support_fwd_grad();
+    i=0; while (i<NP) { store64(Ngp+i*8, nm_lsgrad_val(i)); i=i+1; }
+    i=0; while (i<NP) { store64(nm_param_ptr(i), f64_sub(load64(Norig+i*8), f64_mul(eps, nm_v_val(i)))); i=i+1; }
+    nm_support_fwd_grad();
+    i=0; while (i<NP) { store64(Ngm+i*8, nm_lsgrad_val(i)); i=i+1; }
+    i=0; while (i<NP) { store64(nm_param_ptr(i), load64(Norig+i*8)); i=i+1; }
+    var ok=1; i=0;
+    while (i<NP) {
+        var fd=f64_div(f64_sub(load64(Ngp+i*8),load64(Ngm+i*8)), f64_mul(f64_from(2),eps));
+        if (f64_le(f64_abs(f64_sub(nm_hvp_val(i), fd)), nm_tol())==0) { ok=0; }
+        i=i+1;
+    }
+    return ok;
+}
+# --- GATE 3: the full second-order meta-grad matches FD of the meta-loss ---
+fn nm_meta_grad_gate(): i64 {
+    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000));
+    nm_meta_grad();
+    var ok=1; var i=0;
+    while (i<NP) {
+        var pp=nm_param_ptr(i); var o=load64(pp);
+        store64(pp, f64_add(o,eps)); var hi=nm_meta_loss();
+        store64(pp, f64_sub(o,eps)); var lo=nm_meta_loss();
+        store64(pp, o);
+        var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+        if (f64_le(f64_abs(f64_sub(nm_meta_val(i), fd)), nm_tol())==0) { ok=0; }
+        i=i+1;
+    }
+    return ok;
+}
+# FOMAML (drop the -α·HVP term) must differ from FD-of-meta-loss somewhere.
+fn nm_2nd_observable(): i64 {
+    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000)); var seen=0;
+    nm_meta_grad();
+    var i=0;
+    while (i<NP) {
+        var pp=nm_param_ptr(i); var o=load64(pp);
+        store64(pp, f64_add(o,eps)); var hi=nm_meta_loss();
+        store64(pp, f64_sub(o,eps)); var lo=nm_meta_loss();
+        store64(pp, o);
+        var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+        if (f64_le(nm_tol(), f64_abs(f64_sub(nm_fomaml_val(i), fd)))==1) { seen=1; }
+        i=i+1;
+    }
+    return seen;
+}

@@ -5,6 +5,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M2.b.2 — nonlinear MAML second-order meta-gradient via the R-operator**
+  (`src/mamlnl.cyr`): the reference's hardest derivation. The tanh makes the support
+  Hessian **θ-dependent**, so the HVP `H_s·v` is computed by the hand-derived
+  **Pearlmutter R-operator** (forward-mode differentiation propagated through the
+  gradient computation), then the full meta-grad `gθ' − α·(H_s·gθ')` through the inner
+  step. Equations independently confirmed **three ways** (R-operator / direct-unroll /
+  graph-backprop) + a NumPy finite-difference HVP cross-check, then verified in-code by a
+  **three-level FD gate**: ∇Ls, the HVP (vs FD-of-gradient), and the meta-grad (vs
+  FD-of-meta-loss) — all green; FOMAML observably differs; meta-descent monotone.
 - **M2.b.1 — 1-hidden-layer tanh MLP on `rosnet`** (`src/mlp.cyr`): prajna's first
   NONLINEAR model + its hand-derived first-order backprop (`Z=X·W1+b1`, `Hh=tanh(Z)`,
   `Y=Hh·W2+b2`, MSE; `linear_bwd` for the matrix products, manual `tanh'`). **FD gate

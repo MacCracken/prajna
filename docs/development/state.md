@@ -22,9 +22,12 @@ on top, untagged (toward 0.2.0).**
   `maml_fd_grad` / `maml_gate` / `maml_2nd_observable`. The HVP `H_s·gθ'` is one
   `linear_fwd` + `linear_bwd` (constant Hessian for linear+MSE).
 - `src/mlp.cyr` — **M2.b.1**: 1-hidden-layer tanh MLP on **rosnet** (K=2→H=3→1) +
-  hand-derived first-order backprop. `mlp_init` / `mlp_forward` / `mlp_backward` /
-  `mlp_param_ptr` / `mlp_grad_val` / `mlp_fd_grad` / `mlp_grad_gate`. The nonlinear
-  foundation; its θ-dependent Hessian is M2.b.2's HVP target.
+  hand-derived first-order backprop. The nonlinear foundation.
+- `src/mamlnl.cyr` — **M2.b.2**: nonlinear MAML + the **Pearlmutter R-operator**
+  second-order meta-gradient (θ-dependent Hessian). `nm_support_fwd_grad` / `nm_adapt`
+  / `nm_query_grad_adapted` / `nm_rpass` (R-forward + R-reverse → `H_s·v`) /
+  `nm_meta_grad` / three FD gates (`nm_grad_gate`, `nm_hvp_gate`, `nm_meta_grad_gate`)
+  + `nm_2nd_observable`.
 - `src/main.cyr` — demo: M1 → M2.a → M2.b.1, with per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts M1 + M2.a + M2.b.1 gates.
 
@@ -36,6 +39,9 @@ on top, untagged (toward 0.2.0).**
 - **M2.a**: full meta-grad matches FD on **all 4 params exactly**; FOMAML wrong-signed
   on `W[0]` (`−0.393` vs `+0.031`); meta-descent loss `0.200 → 0.053` monotone.
 - **M2.b.1**: support `Ls = 0.072669`; hand-derived ∇Ls matches FD on **all 13 params**.
+- **M2.b.2**: **three-level FD gate all PASS** — ∇Ls, the R-operator HVP (vs
+  FD-of-gradient), and the full second-order meta-grad (vs FD-of-meta-loss); FOMAML
+  observably differs (θ-dependent Hessian is real); meta-descent `0.050 → 0.030`.
 
 ## Dependencies
 
@@ -51,8 +57,8 @@ _None yet._
 
 ## Next
 
-**M2.b.2** — the R-operator HVP: the tanh makes the support Hessian θ-dependent, so
-hand-derive `H_s·v` via the Pearlmutter R-operator (forward-mode over the gradient),
-then the full second-order meta-grad through the MLP's inner step — FD-gated at three
-levels (∇Ls, the HVP, the meta-grad). Then **M2.c** sine-task sampling + meta-training
-+ the fast-adaptation demo + MAML benchmark. See [`roadmap.md`](roadmap.md).
+**M2.c** — the demonstration. Sample sine-wave tasks with `tyche`; meta-train the MLP
+initialization across tasks (full second-order vs FOMAML/Reptile); show K-shot fast
+adaptation to a new task beats a non-meta baseline; benchmark vs the MAML sine-regression
+setup. **Honest-negative eligible**: does the full 2nd-order term beat FOMAML *at this
+tiny scale*? See [`roadmap.md`](roadmap.md).
