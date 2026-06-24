@@ -92,8 +92,14 @@ gradient descent by gradient descent", Andrychowicz 2016). Sub-split:
 > recurrent learned optimizers, hand-derived BPTT, FD-gated, beating hand-tuned SGD.
 
 ### M4 — Text few-shot / attn11 tie-in (→ v0.4.0)
-- **Dep gate**: add `akshara` (tokenizer). Meta-learn over a tiny LM few-shot task —
-  the bridge into the rest of the ML family.
+Meta-learn over a tiny LM few-shot task; the bridge into the ML family (shared `akshara`
+tokenizer). Sub-split:
+- **M4.a — the text-model foundation — ✅ landed 2026-06-24** (`src/text.cyr`): wired
+  `akshara` (the family tokenizer); a tiny next-token LM = token embedding → linear head →
+  softmax cross-entropy (ported from attn11). Hand-derived backprop incl. the embedding
+  scatter-gradient — **FD-gated on all 72 params** ("hello world" → V=8, M=10 pairs).
+- **M4.b — MAML over text tasks** (next): each task = a short text/pattern; meta-learn an
+  init that adapts few-shot to a new text's next-token statistics, beating a non-meta baseline.
 
 ### M5 — Continual-learning durability (→ v0.5.0)
 - **EWC** (Fisher penalty) + experience replay so sequential meta-adaptations don't

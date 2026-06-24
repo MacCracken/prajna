@@ -44,7 +44,11 @@ hand-derived, FD-gated, beats hand-tuned SGD. (0.1.0 = scaffold+M1; 0.2.0 = M2 M
   `lr_forward`/`lr_meta_grad` (two-recurrence BPTT)/`lr_gate` (FD over 29 params); reuses
   `lopt.cyr`'s optimizee + sampler. The 2nd realization of learn-to-learn (meta-learn the
   *update rule*), feedforward + recurrent.
-- `src/main.cyr` — demo: M1 → M2.* → M3.a, per-stage gates. Exit 0 iff all pass.
+- `src/text.cyr` — **M4.a**: next-token LM on `akshara`-tokenized text (token embedding →
+  linear head → softmax cross-entropy, ported from attn11). `tx_init` (tokenize+build pairs),
+  `tx_forward`/`tx_backward` (incl. embedding scatter-grad), `tx_gate` (FD over V·D+D·V+V
+  params). The tie-in to the ML family (shared tokenizer).
+- `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.a, per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
 
 ## Verification (2026-06-24)
@@ -71,8 +75,10 @@ hand-derived, FD-gated, beats hand-tuned SGD. (0.1.0 = scaffold+M1; 0.2.0 = M2 M
 - **M3.b**: meta-training drops held-out trajectory loss **23.1 → 0.096**; the meta-trained
   optimizer **beats the best fixed-lr SGD** (0.096 vs 0.107).
 - **M3.c**: recurrent-optimizer two-recurrence BPTT **matches FD on all 29 params**;
-  meta-trains to **0.085** — beating feedforward (0.096) and SGD (0.107). Demo run exit 0
-  (all gates + results); `cyrius test` green (all FD gates + M2.c + M3.a/b/c).
+  meta-trains to **0.085** — beating feedforward (0.096) and SGD (0.107).
+- **M4.a**: next-token LM on akshara-tokenized "hello world" (V=8, M=10 pairs, NLL 2.106 ≈
+  ln 8); embedding+head+softmax-xent backprop **matches FD on all 72 params**. Demo run exit
+  0; `cyrius test` green (all FD gates + M2.c + M3.a/b/c + M4.a).
 
 ## Dependencies
 
@@ -88,6 +94,7 @@ _None yet._
 
 ## Next
 
-**M4 — text few-shot / attn11 tie-in** (→ v0.4.0): add the `akshara` tokenizer; meta-learn
-over a tiny LM few-shot task — the bridge into the rest of the ML family (attn11/tarka share
-the tokenizer). See [`roadmap.md`](roadmap.md).
+**M4.b** — MAML over text tasks: each task = a short text/pattern; meta-learn an init that
+adapts few-shot to a new text's next-token statistics (on the M4.a LM), beating a non-meta
+baseline. (M4.a — the text-model foundation + `akshara` tie-in — landed + FD-gated.) See
+[`roadmap.md`](roadmap.md).

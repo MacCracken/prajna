@@ -5,6 +5,7 @@
 include "lib/syscalls.cyr"
 include "lib/tyche.cyr"
 include "lib/rosnet.cyr"
+include "lib/akshara.cyr"
 include "src/meta.cyr"
 include "src/maml.cyr"
 include "src/mlp.cyr"
@@ -12,6 +13,11 @@ include "src/mamlnl.cyr"
 include "src/sine.cyr"
 include "src/lopt.cyr"
 include "src/lrnn.cyr"
+include "src/text.cyr"
+
+# akshara references _putc/puts (its emit/debug paths); provide them for this build unit.
+fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
+fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
 
 fn main() {
     alloc_init();
@@ -108,6 +114,10 @@ fn main() {
         rci = rci + 1;
     }
     assert(f64_le(lr_eval_learned(15, 7777), rcb), "M3.c: recurrent optimizer meta-trains (loss drops)");
+
+    # ---- M4.a: next-token LM on akshara-tokenized text — backprop FD-gated ----
+    tx_init("hello world", 11, 4);
+    assert(tx_gate(), "M4.a: next-token LM (embedding+head+softmax-xent) backprop matches FD");
 
     return 0;
 }

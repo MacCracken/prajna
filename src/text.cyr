@@ -1,0 +1,141 @@
+# prajna — M4: text few-shot meta-learning, the bridge to the rest of the ML family
+# (attn11/tarka/tentib share the akshara tokenizer). M4.a (here): the tiny next-token LM
+# the meta-learning sits on — token EMBEDDING + linear head + SOFTMAX cross-entropy, with
+# hand-derived backprop (incl. the embedding scatter-gradient), FD-gated. M4.b adds MAML
+# over text tasks on top.
+#
+#   per (input token x_m, target token y_m):  emb_m = E[x_m]  (lookup)
+#   logits = embx·W + b   [M×V]   ;   L = mean softmax-cross-entropy(logits, y)
+#   backward: dlogits=(probs-onehot)/M -> (dembx,dW,db) via linear_bwd -> scatter dembx into dE.
+
+# akshara loader/streaming consumer symbols — unused (we drive corpus_set/gd_ld only).
+fn secure_read_file(path, buf, cap): i64 { return 0 - 1; }
+fn read_stdin(buf, cap): i64 { return 0 - 1; }
+fn file_seek(fd, off): i64 { return 0 - 1; }
+
+# ---- softmax cross-entropy (ported from attn11 ops.cyr via tentib; rosnet has no softmax) ----
+# Forward: per row, max-subtract softmax into probs(M*V); returns mean NLL. targets = raw ids.
+fn softmax_xent_fwd(logits, targets, probs, M, V): i64 {
+    var total = f64_from(0); var m = 0;
+    while (m < M) {
+        var row = logits + m*V*8; var prow = probs + m*V*8;
+        var mx = load64(row); var i = 1;
+        while (i < V) { var lv = load64(row+i*8); if (f64_gt(lv, mx) == 1) { mx = lv; } i = i + 1; }
+        var sum = f64_from(0); i = 0;
+        while (i < V) {
+            var e = f64_exp(f64_sub(load64(row+i*8), mx));
+            store64(prow+i*8, e); sum = f64_add(sum, e); i = i + 1;
+        }
+        var inv = f64_div(f64_from(1), sum); i = 0;
+        while (i < V) { store64(prow+i*8, f64_mul(load64(prow+i*8), inv)); i = i + 1; }
+        var tgt = load64(targets + m*8);
+        total = f64_sub(total, f64_ln(load64(prow + tgt*8)));
+        m = m + 1;
+    }
+    return f64_div(total, f64_from(M));
+}
+# Backward: dlogits = (probs - onehot(targets)) / M.
+fn softmax_xent_bwd(probs, targets, dlogits, M, V): i64 {
+    var invM = f64_div(f64_from(1), f64_from(M)); var m = 0;
+    while (m < M) {
+        var tgt = load64(targets + m*8); var i = 0;
+        while (i < V) {
+            var g = load64(probs + (m*V+i)*8);
+            if (i == tgt) { g = f64_sub(g, f64_from(1)); }
+            store64(dlogits + (m*V+i)*8, f64_mul(g, invM));
+            i = i + 1;
+        }
+        m = m + 1;
+    }
+    return 0;
+}
+
+# ---- the next-token LM ----
+var TX_V=0; var TX_D=0; var TX_M=0;
+var TX_E=0; var TX_W=0; var TX_b=0;                      # params: E[V×D], W[D×V], b[V]
+var TX_dE=0; var TX_dW=0; var TX_db=0;                   # grads
+var TX_x=0; var TX_y=0;                                  # input / target token ids
+var TX_embx=0; var TX_logits=0; var TX_probs=0; var TX_dlogits=0; var TX_dembx=0;
+fn tx_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }   # 1e-4
+
+# tokenize `text` via akshara (byte vocab), build the (input,target) next-token pairs, init params.
+fn tx_init(text, len, D): i64 {
+    TX_D = D;
+    TX_V = corpus_set(text, len);                        # -> vocab size; tokens in akshara store
+    TX_M = g_datalen - 1;                                # T-1 next-token pairs
+    var V=TX_V; var M=TX_M;
+    TX_E=t_alloc(V*D); TX_W=t_alloc(D*V); TX_b=t_alloc(V);
+    TX_dE=t_alloc(V*D); TX_dW=t_alloc(D*V); TX_db=t_alloc(V);
+    TX_x=t_alloc(M); TX_y=t_alloc(M);
+    TX_embx=t_alloc(M*D); TX_logits=t_alloc(M*V); TX_probs=t_alloc(M*V);
+    TX_dlogits=t_alloc(M*V); TX_dembx=t_alloc(M*D);
+    var m=0; while (m < M) { store64(TX_x+m*8, gd_ld(m)); store64(TX_y+m*8, gd_ld(m+1)); m=m+1; }
+    rng_seed(424242);
+    var std=f64_div(f64_from(1), f64_from(10));
+    t_randn(TX_E, V*D, std); t_randn(TX_W, D*V, std); t_randn(TX_b, V, std);
+    return 0;
+}
+
+# forward: gather embeddings -> logits -> softmax-xent ; returns mean NLL.
+fn tx_forward(): i64 {
+    var V=TX_V; var D=TX_D; var M=TX_M;
+    var m=0;
+    while (m < M) {
+        var x = load64(TX_x+m*8); var d=0;
+        while (d < D) { store64(TX_embx+(m*D+d)*8, load64(TX_E+(x*D+d)*8)); d=d+1; }
+        m=m+1;
+    }
+    linear_fwd(TX_embx, TX_W, TX_b, TX_logits, M, D, V);
+    return softmax_xent_fwd(TX_logits, TX_y, TX_probs, M, V);
+}
+# backward: hand-derived ∇ over E,W,b (incl. the embedding scatter).
+fn tx_backward(): i64 {
+    var V=TX_V; var D=TX_D; var M=TX_M;
+    tx_forward();
+    softmax_xent_bwd(TX_probs, TX_y, TX_dlogits, M, V);
+    t_zero(TX_dW, D*V); t_zero(TX_db, V);
+    linear_bwd(TX_embx, TX_W, TX_dlogits, TX_dembx, TX_dW, TX_db, M, D, V);   # dembx, dW, db
+    t_zero(TX_dE, V*D);
+    var m=0;
+    while (m < M) {                                      # scatter: dE[x_m] += dembx[m]
+        var x = load64(TX_x+m*8); var d=0;
+        while (d < D) {
+            store64(TX_dE+(x*D+d)*8, f64_add(load64(TX_dE+(x*D+d)*8), load64(TX_dembx+(m*D+d)*8)));
+            d=d+1;
+        }
+        m=m+1;
+    }
+    return 0;
+}
+
+# FD gate over all params (E[V*D], W[D*V], b[V]).
+fn tx_np(): i64 { return TX_V*TX_D + TX_D*TX_V + TX_V; }
+fn tx_pp(idx): i64 {
+    var VD=TX_V*TX_D; var DV=TX_D*TX_V;
+    if (idx < VD) { return TX_E+idx*8; }
+    if (idx < VD+DV) { return TX_W+(idx-VD)*8; }
+    return TX_b+(idx-VD-DV)*8;
+}
+fn tx_gv(idx): i64 {
+    var VD=TX_V*TX_D; var DV=TX_D*TX_V;
+    if (idx < VD) { return load64(TX_dE+idx*8); }
+    if (idx < VD+DV) { return load64(TX_dW+(idx-VD)*8); }
+    return load64(TX_db+(idx-VD-DV)*8);
+}
+fn tx_fd(idx): i64 {
+    var eps = f64_div(f64_from(1), f64_from(100000));
+    var pp = tx_pp(idx); var o = load64(pp);
+    store64(pp, f64_add(o, eps)); var hi = tx_forward();
+    store64(pp, f64_sub(o, eps)); var lo = tx_forward();
+    store64(pp, o);
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+fn tx_gate(): i64 {
+    tx_backward();
+    var ok=1; var i=0; var NP=tx_np();
+    while (i < NP) {
+        if (f64_le(f64_abs(f64_sub(tx_gv(i), tx_fd(i))), tx_tol()) == 0) { ok = 0; }
+        i = i + 1;
+    }
+    return ok;
+}

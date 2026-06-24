@@ -38,3 +38,11 @@ modules = ["dist/tyche.cyr"]
 git = "https://github.com/MacCracken/rosnet"
 tag = "0.2.0"
 modules = ["dist/rosnet.cyr"]
+
+# Sovereign tokenizer (अक्षर) — the shared text→token-id layer (with attn11/tarka/tentib).
+# M4 uses the byte-vocab path: corpus_set(text,len)->V + gd_ld(i) + g_datalen. The loader
+# symbols (secure_read_file/read_stdin/file_seek) are stubbed in the build units.
+[deps.akshara]
+git = "https://github.com/MacCracken/akshara"
+tag = "0.1.0"
+modules = ["dist/akshara.cyr"]

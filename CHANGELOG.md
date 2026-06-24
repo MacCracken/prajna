@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **M4.a — next-token LM on `akshara`-tokenized text** (`src/text.cyr`): the text-model
+  foundation for M4's text few-shot meta-learning, and the **tie-in to the rest of the ML
+  family** (attn11/tarka/tentib share the `akshara` tokenizer). Tokenize text → next-token
+  pairs; a tiny LM = token **embedding** → linear head → **softmax cross-entropy** (ported
+  from attn11's ops via tentib). Hand-derived backprop incl. the embedding **scatter-gradient**
+  — **FD-gated on all 72 params** ("hello world" → V=8, M=10; initial NLL 2.106 ≈ ln 8). Added
+  `[deps.akshara]` 0.1.0. `cyrius test` gates it.
+
 ## [0.3.0] — 2026-06-24
 
 M3 — the learned optimizer: meta-learn the *update rule* itself (not an initialization),
