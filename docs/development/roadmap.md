@@ -49,11 +49,18 @@ Scale the primitive from scalar to a real model. Broken into verified sub-bites:
     through the MLP's inner step. Equations confirmed three ways + NumPy FD cross-check;
     **three-level FD gate all green** (∇Ls / HVP-vs-FD-of-gradient / meta-grad-vs-FD-of-
     meta-loss); FOMAML observably differs; meta-descent monotone. **M2.b complete.**
-- **M2.c — sine-task sampling + meta-training + demo**: sample sine tasks with `tyche`;
-  meta-train an initialization; show K-shot fast adaptation beats a non-meta baseline;
-  benchmark vs the MAML paper's sine-regression setup (B-series fairness rules).
-  **Honest-negative eligible**: does the full 2nd-order term beat FOMAML/Reptile *at
-  this tiny scale*? — a finding either way (attn11-MTP style).
+- **M2.c — sine-task few-shot meta-learning** (the demonstration). Sub-split:
+  - **M2.c.1 — sine substrate + engine generalization — ✅ landed 2026-06-24**
+    (`src/sine.cyr`): sovereign `f64_sin` (range-reduced Taylor, validated), the sine-task
+    sampler (`y=A·sin(x+φ)` via `tyche`), and the `nm_config` refactor making the engine
+    dimension/data-configurable. The three FD gates pass at the sine config (K=1, H=8) on a
+    sampled task — the verified R-operator generalizes.
+  - **M2.c.2 — the meta-training loop** (next): meta-train the MLP initialization across
+    sampled sine tasks (full 2nd-order meta-grad); show the meta-loss falling and K-shot
+    fast adaptation to a held-out task beating a non-meta baseline.
+  - **M2.c.3 — the benchmark**: full-2nd-order vs FOMAML vs Reptile at this tiny scale.
+    **Honest-negative eligible**: does the 2nd-order term actually help here? — a finding
+    either way (attn11-MTP style). Benchmark vs the MAML sine-regression setup.
 
 ### M3 — Learned optimizer (→ v0.3.0)
 The second realization of learn-to-learn on the same meta-grad machinery.

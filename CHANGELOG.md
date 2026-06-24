@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M2.c.1 — sine-task substrate + engine generalization** (`src/sine.cyr`): a
+  sovereign **`f64_sin`** (π via a 245850922/78256779 convergent + range-reduced 8-term
+  Taylor; validated at 0, π/6, π/2, π, −π/2 within 1e-5), the sine-task sampler
+  (`y = A·sin(x+φ)`, A∈[0.1,5], φ∈[0,π], via `tyche`), and a refactor making the
+  `mamlnl.cyr` engine **dimension/data-configurable** (`nm_config`). **Proof of
+  generalization**: the three FD gates pass at the sine config **K=1, H=8** on a sampled
+  task — the verified R-operator works beyond the M2.b.2 fixed dims. No new deps (sin is
+  hand-rolled, not borrowed from abaco).
 - **M2.b.2 — nonlinear MAML second-order meta-gradient via the R-operator**
   (`src/mamlnl.cyr`): the reference's hardest derivation. The tanh makes the support
   Hessian **θ-dependent**, so the HVP `H_s·v` is computed by the hand-derived

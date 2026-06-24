@@ -9,6 +9,7 @@ include "src/meta.cyr"
 include "src/maml.cyr"
 include "src/mlp.cyr"
 include "src/mamlnl.cyr"
+include "src/sine.cyr"
 
 fn main() {
     alloc_init();
@@ -44,6 +45,10 @@ fn main() {
     assert(nm_hvp_gate(), "M2.b.2: R-operator HVP matches FD-of-gradient (gate 2)");
     assert(nm_meta_grad_gate(), "M2.b.2: 2nd-order meta-grad matches FD-of-meta-loss (gate 3)");
     assert(nm_2nd_observable(), "M2.b.2: FOMAML differs from FD (θ-dependent 2nd-order term is real)");
+
+    # ---- M2.c.1: sovereign f64_sin + engine generalization at the sine config ----
+    assert(sine_validate(), "M2.c.1: f64_sin valid at known angles");
+    assert(sine_sanity(), "M2.c.1: engine FD-gates pass at sine config (K=1,H=8)");
 
     return 0;
 }

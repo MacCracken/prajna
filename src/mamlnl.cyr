@@ -14,11 +14,13 @@
 #   H_s·v = (RgW1,Rgb1,RgW2,Rgb2) ;  meta-grad = gq' - α·(H_s·gq'),  v := gq'.
 # Three-level FD gate: ∇Ls, the HVP (vs FD-of-gradient), and the meta-grad.
 
-fn nm_k(): i64 { return 2; }
-fn nm_h(): i64 { return 3; }
-fn nm_ms(): i64 { return 4; }
-fn nm_mq(): i64 { return 4; }
-fn nm_np(): i64 { return nm_k()*nm_h() + nm_h() + nm_h() + 1; }   # 13
+# dims are configurable at runtime (nm_init = fixed M2.b.2 gate config; nm_config = M2.c).
+var nmK=2; var nmH=3; var nmMs=4; var nmMq=4;
+fn nm_k(): i64 { return nmK; }
+fn nm_h(): i64 { return nmH; }
+fn nm_ms(): i64 { return nmMs; }
+fn nm_mq(): i64 { return nmMq; }
+fn nm_np(): i64 { return nm_k()*nm_h() + nm_h() + nm_h() + 1; }
 fn nm_alpha(): i64 { return f64_div(f64_from(1), f64_from(10)); } # 0.1
 fn nm_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }# 1e-4
 
@@ -42,7 +44,7 @@ var NdxD=0; var NdWD=0; var Ntmp=0;
 var NoW1=0; var Nob1=0; var NoW2=0; var Nob2=0;
 var Norig=0; var Ngp=0; var Ngm=0;
 
-fn nm_init(): i64 {
+fn nm_alloc(): i64 {
     var K=nm_k(); var H=nm_h(); var Ms=nm_ms(); var Mq=nm_mq(); var NP=nm_np();
     NW1=t_alloc(K*H); Nb1=t_alloc(H); NW2=t_alloc(H); Nb2=t_alloc(1);
     NXs=t_alloc(Ms*K); NTs=t_alloc(Ms); NXq=t_alloc(Mq*K); NTq=t_alloc(Mq);
@@ -60,7 +62,15 @@ fn nm_init(): i64 {
     NdxD=t_alloc(Ms*H); NdWD=t_alloc(K*H); Ntmp=t_alloc(Ms*H);
     NoW1=t_alloc(K*H); Nob1=t_alloc(H); NoW2=t_alloc(H); Nob2=t_alloc(1);
     Norig=t_alloc(NP); Ngp=t_alloc(NP); Ngm=t_alloc(NP);
+    return 0;
+}
 
+# M2.c: configure arbitrary dims + allocate (caller fills NXs/NTs/NXq/NTq).
+fn nm_config(k, h, ms, mq): i64 { nmK=k; nmH=h; nmMs=ms; nmMq=mq; nm_alloc(); return 0; }
+
+# M2.b.2 gate config: fixed K=2,H=3 dims + fixed task data.
+fn nm_init(): i64 {
+    nmK=2; nmH=3; nmMs=4; nmMq=4; nm_alloc();
     # params θ (reuse mlp.cyr's ften: n/10)
     store64(NW1+0*8, ften(2)); store64(NW1+1*8, ften(0-1)); store64(NW1+2*8, ften(3));
     store64(NW1+3*8, ften(0-2)); store64(NW1+4*8, ften(1)); store64(NW1+5*8, ften(0-3));

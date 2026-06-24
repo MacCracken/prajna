@@ -26,8 +26,12 @@ on top, untagged (toward 0.2.0).**
 - `src/mamlnl.cyr` — **M2.b.2**: nonlinear MAML + the **Pearlmutter R-operator**
   second-order meta-gradient (θ-dependent Hessian). `nm_support_fwd_grad` / `nm_adapt`
   / `nm_query_grad_adapted` / `nm_rpass` (R-forward + R-reverse → `H_s·v`) /
-  `nm_meta_grad` / three FD gates (`nm_grad_gate`, `nm_hvp_gate`, `nm_meta_grad_gate`)
-  + `nm_2nd_observable`.
+  `nm_meta_grad` / three FD gates + `nm_2nd_observable`. **Dimension-configurable**
+  (`nm_config(k,h,ms,mq)`) so M2.c reuses the verified engine; `nm_init` = the fixed
+  M2.b.2 gate config.
+- `src/sine.cyr` — **M2.c.1**: sovereign `f64_sin` (range-reduced Taylor) + `f64_pi`;
+  sine-task sampler (`sine_sample_task`/`sine_fill`) over `tyche`; `sine_init_params`;
+  `sine_sanity` (the 3 FD gates at the K=1,H=8 sine config — engine generalization).
 - `src/main.cyr` — demo: M1 → M2.a → M2.b.1, with per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts M1 + M2.a + M2.b.1 gates.
 
@@ -42,6 +46,8 @@ on top, untagged (toward 0.2.0).**
 - **M2.b.2**: **three-level FD gate all PASS** — ∇Ls, the R-operator HVP (vs
   FD-of-gradient), and the full second-order meta-grad (vs FD-of-meta-loss); FOMAML
   observably differs (θ-dependent Hessian is real); meta-descent `0.050 → 0.030`.
+- **M2.c.1**: `f64_sin` valid at known angles (<1e-5); the three FD gates **pass at the
+  K=1,H=8 sine config** on a sampled task — the R-operator engine generalizes.
 
 ## Dependencies
 
@@ -57,8 +63,8 @@ _None yet._
 
 ## Next
 
-**M2.c** — the demonstration. Sample sine-wave tasks with `tyche`; meta-train the MLP
-initialization across tasks (full second-order vs FOMAML/Reptile); show K-shot fast
-adaptation to a new task beats a non-meta baseline; benchmark vs the MAML sine-regression
-setup. **Honest-negative eligible**: does the full 2nd-order term beat FOMAML *at this
-tiny scale*? See [`roadmap.md`](roadmap.md).
+**M2.c.2** — the meta-training loop: meta-train the MLP initialization across sampled
+sine tasks with the full second-order meta-grad; show the meta-loss falling and K-shot
+fast adaptation to a held-out task beating a non-meta baseline. Then **M2.c.3** — the
+FOMAML-vs-2nd-order benchmark (honest-negative eligible at this tiny scale). See
+[`roadmap.md`](roadmap.md).

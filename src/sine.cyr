@@ -1,0 +1,87 @@
+# prajna — M2.c: sine-wave few-shot meta-learning (the canonical MAML demo) on the
+# verified nonlinear-MAML + R-operator engine (mamlnl.cyr), with a sovereign f64_sin.
+#
+# A "task" is a sine y = A·sin(x + φ) with A∈[0.1,5], φ∈[0,π]; each task gives K support
+# and K query points (x∈[-5,5]). MAML meta-learns an MLP initialization that adapts to a
+# new sine in a few inner steps. M2.c.1 (here): the f64_sin primitive, the task sampler,
+# and proof the engine GENERALIZES — the three FD gates pass at the sine config (K=1).
+
+# --- sovereign sin: range-reduce to [-π,π], 8-term Taylor (err ~6e-8 at |r|=π) ---
+fn f64_pi(): i64 { return f64_div(f64_from(245850922), f64_from(78256779)); }   # π to ~1e-16
+fn f64_sin(x): i64 {
+    var twopi = f64_mul(f64_from(2), f64_pi());
+    var k = f64_floor(f64_add(f64_div(x, twopi), f64_div(f64_from(1), f64_from(2))));  # round
+    var r = f64_sub(x, f64_mul(k, twopi));            # r ∈ [-π, π]
+    var nr2 = f64_sub(f64_from(0), f64_mul(r, r));    # -r²
+    var term = r; var s = r;                          # sin(r) = Σ r^(2n+1)·(-1)^n / (2n+1)!
+    term = f64_mul(term, f64_div(nr2, f64_from(6)));   s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(20)));  s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(42)));  s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(72)));  s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(110))); s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(156))); s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(210))); s = f64_add(s, term);
+    term = f64_mul(term, f64_div(nr2, f64_from(272))); s = f64_add(s, term);
+    return s;
+}
+
+# |got - want| <= tol
+fn sine_close(got, want, tol): i64 { return f64_le(f64_abs(f64_sub(got, want)), tol); }
+
+# validate f64_sin at known angles (within 1e-5): sin 0, π/2, π/6, π, -π/2
+fn sine_validate(): i64 {
+    var pi = f64_pi(); var tol = f64_div(f64_from(1), f64_from(100000));
+    var half = f64_div(f64_from(1), f64_from(2));
+    var negh = f64_sub(f64_from(0), f64_div(pi, f64_from(2)));
+    var ok = 1;
+    if (sine_close(f64_sin(f64_from(0)), f64_from(0), tol) == 0) { ok = 0; }
+    if (sine_close(f64_sin(f64_div(pi, f64_from(2))), f64_from(1), tol) == 0) { ok = 0; }
+    if (sine_close(f64_sin(f64_div(pi, f64_from(6))), half, tol) == 0) { ok = 0; }
+    if (sine_close(f64_sin(pi), f64_from(0), tol) == 0) { ok = 0; }
+    if (sine_close(f64_sin(negh), f64_from(0-1), tol) == 0) { ok = 0; }
+    return ok;
+}
+
+# small random param init for the MLP (used by M2.c; nm_init's fixed data is gate-only)
+fn sine_init_params(): i64 {
+    var K = nm_k(); var H = nm_h(); var std = f64_div(f64_from(1), f64_from(10));
+    t_randn(NW1, K*H, std); t_randn(Nb1, H, std); t_randn(NW2, H, std); t_randn(Nb2, 1, std);
+    return 0;
+}
+
+# fill (pX[M×1], pT[M]) with x∈[-5,5], y = A·sin(x+φ)
+fn sine_fill(pX, pT, M, A, phi): i64 {
+    var i = 0;
+    while (i < M) {
+        var x = f64_add(f64_from(0-5), f64_mul(f64_from(10), rng_uniform()));
+        store64(pX+i*8, x);
+        store64(pT+i*8, f64_mul(A, f64_sin(f64_add(x, phi))));
+        i = i + 1;
+    }
+    return 0;
+}
+
+# sample one task (A in [0.1,5], phi in [0,pi]) and fill support + query buffers (K=1)
+fn sine_sample_task(): i64 {
+    var lo = f64_div(f64_from(1), f64_from(10));      # 0.1
+    var span = f64_div(f64_from(49), f64_from(10));   # 4.9
+    var A = f64_add(lo, f64_mul(span, rng_uniform()));
+    var phi = f64_mul(f64_pi(), rng_uniform());
+    sine_fill(NXs, NTs, nm_ms(), A, phi);
+    sine_fill(NXq, NTq, nm_mq(), A, phi);
+    return 0;
+}
+
+# Engine-generalization sanity: the three FD gates must pass at the sine config (K=1,H=8)
+# on a sampled task — proving the verified R-operator works beyond the M2.b.2 fixed dims.
+fn sine_sanity(): i64 {
+    nm_config(1, 8, 6, 6);            # K=1 input, H=8 hidden, 6 support + 6 query
+    rng_seed(20260624);
+    sine_init_params();
+    sine_sample_task();
+    var g1 = nm_grad_gate();
+    var g2 = nm_hvp_gate();
+    var g3 = nm_meta_grad_gate();
+    if ((g1 == 1) && (g2 == 1) && (g3 == 1)) { return 1; }
+    return 0;
+}

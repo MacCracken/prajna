@@ -9,6 +9,7 @@ include "src/meta.cyr"               # the scalar meta-gradient core (M1)
 include "src/maml.cyr"               # linear-regression MAML on rosnet (M2.a)
 include "src/mlp.cyr"                # 1-hidden-layer tanh MLP + backprop (M2.b.1)
 include "src/mamlnl.cyr"            # nonlinear MAML + R-operator 2nd-order grad (M2.b.2)
+include "src/sine.cyr"              # sine-task few-shot meta-learning + f64_sin (M2.c)
 
 fn _putc(ch): i64 { var b[8]; store8(&b, ch); sys_write(1, &b, 1); return 0; }
 fn puts(s): i64 { var n = 0; while (load8(s + n) != 0) { n = n + 1; } print(s, n); return 0; }
@@ -137,8 +138,18 @@ fn main() {
     }
     puts("    final     meta_loss="); print_f6(nm_meta_loss()); nl();
 
+    # ---- M2.c.1: sine tasks (sovereign f64_sin) + engine generalization ----
+    nl();
+    puts("prajna M2.c.1 - sine few-shot tasks (sovereign f64_sin) + engine generalization"); nl();
+    var sv = sine_validate();
+    if (sv == 1) { puts("  f64_sin: VALID (sin at 0, pi/6, pi/2, pi, -pi/2 within 1e-5)"); nl(); }
+    else         { puts("  f64_sin: INVALID"); nl(); }
+    var sg = sine_sanity();
+    if (sg == 1) { puts("  ENGINE-GEN: PASS (3 FD gates pass at K=1,H=8 on a sampled sine task)"); nl(); }
+    else         { puts("  ENGINE-GEN: FAIL"); nl(); }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
-    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1);
+    allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
     if (allok) { return 0; }
     return 1;
 }
