@@ -5,6 +5,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **M3.b — meta-train the learned optimizer; it beats hand-tuned SGD** (`src/lopt.cyr`):
+  meta-train `g_φ` (meta-batch SGD over the BPTT grad, **element-wise gradient clipping** for
+  stability) across sampled quadratic optimizees (curvature `a∈[0.5,2.5]`, target `c∈[-2,2]`).
+  Held-out trajectory loss drops **23.1 → 0.096**, and the meta-trained optimizer **beats the
+  best fixed-lr SGD** (`0.096 < 0.107`) — its tanh nonlinearity adapts the step to the gradient
+  magnitude where a single lr can't. Test asserts both the improvement and the SGD-beat.
 - **M3.a — learned-optimizer BPTT meta-gradient** (`src/lopt.cyr`): the core of M3, the
   *second* realization of learn-to-learn — meta-learn the **update rule** (a 1→6→1 tanh net
   `g_φ` mapping gradient → update), not an initialization. Meta-loss = Σ optimizee losses

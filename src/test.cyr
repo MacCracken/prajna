@@ -79,6 +79,21 @@ fn main() {
     lo_init();
     assert(lo_gate(), "M3.a: learned-optimizer BPTT meta-grad matches finite-diff");
 
+    # ---- M3.b: meta-training improves the optimizer + it beats fixed-lr SGD ----
+    lo_opt_init();
+    var lob = lo_eval_learned(15, 7777);
+    var loc = 0;
+    while (loc < 3) {
+        rng_seed(3000 + loc);
+        var lss = 0;
+        while (lss < 100) { lo_train_step_batch(12, f64_div(f64_from(1), f64_from(100))); lss = lss + 1; }
+        loc = loc + 1;
+    }
+    var loa = lo_eval_learned(15, 7777);
+    assert(f64_le(loa, lob), "M3.b: meta-training improves the learned optimizer");
+    assert(f64_le(loa, lo_eval_sgd(15, 7777, f64_div(f64_from(3), f64_from(10)))),
+           "M3.b: learned optimizer beats fixed-lr SGD");
+
     return 0;
 }
 

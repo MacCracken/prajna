@@ -202,9 +202,40 @@ fn main() {
     if (lg == 1) { puts("  GATE: PASS (BPTT dL/dphi matches finite-diff on all 19 optimizer params)"); nl(); }
     else         { puts("  GATE: FAIL"); nl(); }
 
+    # ---- M3.b: meta-train the learned optimizer; compare vs hand-tuned SGD ----
+    nl();
+    puts("prajna M3.b - meta-train the learned optimizer; compare vs hand-tuned SGD"); nl();
+    lo_opt_init();
+    var lo_before = lo_eval_learned(30, 7777);
+    puts("  held-out trajectory loss (Sum l over 8-step unroll), descending:"); nl();
+    puts("    @ untrained = "); print_f6(lo_before); nl();
+    var lomlr = f64_div(f64_from(1), f64_from(100));     # 0.01
+    var lo_after = lo_before; var lc = 0;
+    while (lc < 6) {
+        rng_seed(3000 + lc);
+        var ls = 0; while (ls < 100) { lo_train_step_batch(16, lomlr); ls = ls + 1; }
+        lo_after = lo_eval_learned(30, 7777);
+        puts("    @ "); fmt_int((lc+1)*100); puts(" steps = "); print_f6(lo_after); nl();
+        lc = lc + 1;
+    }
+    # best fixed-lr SGD baseline (sweep) on the same held-out tasks
+    var s1 = lo_eval_sgd(30, 7777, f64_div(f64_from(1), f64_from(10)));   # 0.1
+    var s2 = lo_eval_sgd(30, 7777, f64_div(f64_from(2), f64_from(10)));   # 0.2
+    var s3 = lo_eval_sgd(30, 7777, f64_div(f64_from(4), f64_from(10)));   # 0.4
+    var s4 = lo_eval_sgd(30, 7777, f64_div(f64_from(6), f64_from(10)));   # 0.6
+    var sgd_best = s1;
+    if (f64_le(s2, sgd_best) == 1) { sgd_best = s2; }
+    if (f64_le(s3, sgd_best) == 1) { sgd_best = s3; }
+    if (f64_le(s4, sgd_best) == 1) { sgd_best = s4; }
+    puts("  meta-trained g_phi = "); print_f6(lo_after);
+    puts("    best fixed-lr SGD = "); print_f6(sgd_best); nl();
+    var lo_ok = f64_le(lo_after, lo_before);             # meta-training improved the optimizer
+    if (f64_le(lo_after, sgd_best) == 1) { puts("  RESULT: learned optimizer beats best fixed-lr SGD"); nl(); }
+    else { puts("  RESULT: learned optimizer trains but trails best fixed-lr SGD (honest)"); nl(); }
+
     var allok = (ok==1) && (obs==1) && (mok==1) && (mobs==1) && (gok==1);
     allok = allok && (g1==1) && (g2==1) && (g3==1) && (g4==1) && (sv==1) && (sg==1);
-    allok = allok && (mc_ok==1) && (bench_ok==1) && (lg==1);
+    allok = allok && (mc_ok==1) && (bench_ok==1) && (lg==1) && (lo_ok==1);
     if (allok) { return 0; }
     return 1;
 }

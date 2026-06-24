@@ -127,3 +127,77 @@ fn lo_gate(): i64 {
     }
     return ok;
 }
+
+# --- M3.b: meta-train the optimizer, compare vs vanilla SGD ---
+var loAcc = 0;
+fn lo_opt_init(): i64 { loAcc = t_alloc(lo_np()); return 0; }           # after lo_init
+
+# Σ ℓ(θ_t) over t=1..T from the cached trajectory (LO_th, filled by lo_forward/lo_meta_grad).
+fn lo_cached_loss(): i64 {
+    var T=lo_t(); var L=f64_from(0); var t=1;
+    while (t <= T) {
+        var e = f64_sub(load64(LO_th + t*8), LO_c);
+        L = f64_add(L, f64_mul(f64_div(LO_a, f64_from(2)), f64_mul(e, e)));
+        t = t + 1;
+    }
+    return L;
+}
+# Sample an optimizee task: curvature a∈[0.5,2.5], target c∈[-2,2], θ_0 = 0.
+fn lo_sample_task(): i64 {
+    var a = f64_add(f64_div(f64_from(1), f64_from(2)), f64_mul(f64_from(2), rng_uniform()));
+    var c = f64_sub(f64_mul(f64_from(4), rng_uniform()), f64_from(2));
+    lo_set_task(a, c, f64_from(0));
+    return 0;
+}
+# One meta-batch step: average ∂L/∂φ over B tasks, SGD-update φ. Returns batch avg meta-loss.
+fn lo_train_step_batch(B, mlr): i64 {
+    var NP=lo_np();
+    var j=0; while (j < NP) { store64(loAcc+j*8, f64_from(0)); j = j + 1; }
+    var Lsum=f64_from(0); var b=0;
+    while (b < B) {
+        lo_sample_task();
+        lo_meta_grad();                                # fills caches + dφ
+        Lsum = f64_add(Lsum, lo_cached_loss());
+        j = 0;
+        while (j < NP) { store64(loAcc+j*8, f64_add(load64(loAcc+j*8), lo_grad_val(j))); j = j + 1; }
+        b = b + 1;
+    }
+    # average ∂L/∂φ over the batch, ELEMENT-WISE CLIP to [-1,1] (meta-grad clipping keeps
+    # the unrolled-optimizer training from exploding), then SGD-step φ.
+    var C = f64_from(1);
+    j = 0;
+    while (j < NP) {
+        var gav = f64_div(load64(loAcc+j*8), f64_from(B));
+        if (f64_le(gav, f64_sub(f64_from(0), C)) == 1) { gav = f64_sub(f64_from(0), C); }
+        if (f64_le(C, gav) == 1) { gav = C; }
+        var pp = lo_param_ptr(j);
+        store64(pp, f64_sub(load64(pp), f64_mul(mlr, gav)));
+        j = j + 1;
+    }
+    return f64_div(Lsum, f64_from(B));
+}
+# Held-out avg trajectory loss with the CURRENT learned optimizer g_φ.
+fn lo_eval_learned(ntasks, seed): i64 {
+    rng_seed(seed);
+    var acc=f64_from(0); var i=0;
+    while (i < ntasks) { lo_sample_task(); acc = f64_add(acc, lo_forward()); i = i + 1; }
+    return f64_div(acc, f64_from(ntasks));
+}
+# Vanilla SGD on the current task: θ_{t+1}=θ_t − lr·∇ℓ ; return Σ ℓ(θ_t) (same metric as g_φ).
+fn lo_sgd_unroll(lr): i64 {
+    var T=lo_t(); var th=LO_th0; var L=f64_from(0); var t=0;
+    while (t < T) {
+        var g = f64_mul(LO_a, f64_sub(th, LO_c));
+        th = f64_sub(th, f64_mul(lr, g));
+        var e = f64_sub(th, LO_c);
+        L = f64_add(L, f64_mul(f64_div(LO_a, f64_from(2)), f64_mul(e, e)));
+        t = t + 1;
+    }
+    return L;
+}
+fn lo_eval_sgd(ntasks, seed, lr): i64 {
+    rng_seed(seed);
+    var acc=f64_from(0); var i=0;
+    while (i < ntasks) { lo_sample_task(); acc = f64_add(acc, lo_sgd_unroll(lr)); i = i + 1; }
+    return f64_div(acc, f64_from(ntasks));
+}

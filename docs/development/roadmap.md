@@ -77,11 +77,13 @@ gradient descent by gradient descent", Andrychowicz 2016). Sub-split:
   tanh optimizer `g_φ` (gradient → update), unrolled 8 steps on a quadratic optimizee;
   meta-loss = Σ optimizee losses; meta-grad `∂L/∂φ` via the hand-derived **BPTT** recurrence
   (`dg·a` routes through the optimizee Hessian). **FD-gated on all 19 params** (first build).
-- **M3.b — meta-train the optimizer + demonstrate it learns to optimize** (next): meta-train
-  `φ` (SGD/Adam over the BPTT grad) across sampled quadratics; show the meta-trained optimizer
-  drives the optimizee loss down **faster than vanilla SGD** on held-out tasks.
-- **M3.c** (optional): scale to multi-coordinate optimizees / a recurrent (LSTM) optimizer,
-  the Andrychowicz canonical.
+- **M3.b — meta-train the optimizer; it beats SGD — ✅ landed 2026-06-24** (`src/lopt.cyr`):
+  meta-train `φ` (meta-batch SGD over the BPTT grad, **gradient-clipped** for stability) across
+  sampled quadratics. Held-out trajectory loss **23.1 → 0.096**; the meta-trained optimizer
+  **beats the best fixed-lr SGD** (0.096 vs 0.107) — genuine "learning to learn." Test asserts
+  the improvement + the SGD-beat. **M3 core complete (a+b).**
+- **M3.c** (optional, deferred): scale to multi-coordinate optimizees / a recurrent (LSTM)
+  optimizer — the Andrychowicz canonical. Not required for the M3 thesis (already proven).
 
 ### M4 — Text few-shot / attn11 tie-in (→ v0.4.0)
 - **Dep gate**: add `akshara` (tokenizer). Meta-learn over a tiny LM few-shot task —

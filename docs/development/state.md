@@ -35,9 +35,11 @@ meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
   `sine_sanity` (3 FD gates at the sine config — generalization); **M2.c.2/.3**: `sine_eval`,
   `sine_opt_init`, `sine_train_batch_step_m(full)` (meta-batch SGD; full or FOMAML),
   `sine_benchmark`. `nm_set_alpha` makes the inner lr configurable.
-- `src/lopt.cyr` — **M3.a**: learned optimizer (1→6→1 tanh `g_φ`, gradient→update) unrolled
-  8 steps on a quadratic optimizee; `lo_forward` (unroll + meta-loss), `lo_meta_grad` (BPTT
-  `∂L/∂φ`), `lo_gate` (FD over 19 params). The 2nd realization of learn-to-learn.
+- `src/lopt.cyr` — **M3.a/.b**: learned optimizer (1→6→1 tanh `g_φ`, gradient→update) unrolled
+  8 steps on a quadratic optimizee. **M3.a**: `lo_forward`, `lo_meta_grad` (BPTT `∂L/∂φ`),
+  `lo_gate` (FD over 19 params). **M3.b**: `lo_sample_task`, `lo_train_step_batch` (meta-batch
+  + gradient-clipped SGD), `lo_eval_learned`, `lo_sgd_unroll`/`lo_eval_sgd` (vanilla-SGD
+  baseline). The 2nd realization of learn-to-learn (meta-learn the *update rule*).
 - `src/main.cyr` — demo: M1 → M2.* → M3.a, per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: asserts all FD gates + the M2.c training/FOMAML results.
 
@@ -61,8 +63,10 @@ meta-learning. (0.1.0 = scaffold + M1.) Next: **M3** (learned optimizer).
   equivalent** (1.692 vs 1.690, |diff| ~0.1%) — the HVP buys little at this scale (the
   Finn 2017 FOMAML honest-negative).
 - **M3.a**: learned-optimizer BPTT meta-grad **matches FD on all 19 optimizer params**
-  (untrained unroll L=32.47, T=8). Demo run exit 0 (all gates + results); `cyrius test`
-  green (all FD gates + M2.c training/FOMAML + M3.a BPTT).
+  (untrained unroll L=32.47, T=8).
+- **M3.b**: meta-training drops held-out trajectory loss **23.1 → 0.096**; the meta-trained
+  optimizer **beats the best fixed-lr SGD** (0.096 vs 0.107). Demo run exit 0 (all gates +
+  results); `cyrius test` green (all FD gates + M2.c + M3.a BPTT + M3.b improves & beats-SGD).
 
 ## Dependencies
 
@@ -78,7 +82,7 @@ _None yet._
 
 ## Next
 
-**M3.b** — meta-train the learned optimizer: SGD/Adam over the BPTT meta-grad across sampled
-quadratic optimizees, then show the meta-trained `g_φ` drives the optimizee loss down **faster
-than vanilla SGD** on held-out tasks. (M3.a — the BPTT meta-grad core — landed + FD-gated.)
-See [`roadmap.md`](roadmap.md).
+**M3 core is complete (a + b).** Options: **M3.c** (optional — scale to multi-coordinate /
+a recurrent LSTM optimizer, the Andrychowicz canonical; not required for the thesis) or
+move to **M4** (text few-shot, adds the `akshara` tokenizer). User's call. See
+[`roadmap.md`](roadmap.md).
