@@ -4,6 +4,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-24
+
+**Release candidate for 1.0.** All v1.0 criteria are met; 1.0.0 will be a clean version cut
+with a small doc pass. No code changes to the M1–M5 reference or the 0.6.x hardening — this is
+the API-freeze + documentation milestone.
+
+### Added
+- **`docs/api.md` — the public API, frozen at 1.0.** Documents the consumable `fdgate.cyr`
+  surface and the per-milestone reference interface, with an explicit stability policy (the
+  **gates** are the contract, not the literal digits). See ADR 0001.
+- **`docs/benchmarks.md`** — footprint (224 KB binary, 2,246 lines, 3 deps, no libc/BLAS/autodiff),
+  correctness (every gradient FD-gated, param counts), and convergence numbers per milestone.
+- **`examples/gate_consumer.cyr` + `examples/README.md`** — a buildable downstream-consumer
+  example that vendors `fdgate` to FD-gate an external gradient (`f(x)=x³`) and shows NaN rejection.
+- **`docs/adr/0001-api-freeze.md`** — records the freeze decision and its scope.
+
+### Changed
+- **`README.md`** — expanded with the full M1–M5 reference summary and a documentation index
+  (API, benchmarks, security, examples, roadmap, ADRs).
+
 ## [0.6.3] — 2026-06-24
 
 Final patch of the 0.6.x hardening arc — refactor (audit R-2, R-3). **Arc complete.**

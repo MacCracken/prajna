@@ -146,11 +146,21 @@ gradient silently *passes*; `f64_le(NaN,x)==1`).
 > (0.6.1) · security/supply-chain + `SECURITY.md` (0.6.2) · FD-infra refactor (0.6.3). Every audit
 > finding (N-1, N-2, N-3, M-1, S-1, R-2, R-3) resolved or consciously deferred. → **v1.0 freeze.**
 
-## v1.0 criteria (after 0.6.x)
+## v1.0 criteria — ALL MET at 0.9.0 (2026-06-24)
 
-API freeze + `docs/api.md`, a `docs/benchmarks.md`, ≥1 downstream-consumer example, a security
-sign-off, CHANGELOG complete, every hand-derived backward FD-checked (done) — the freeze cycle
-that graduates prajna to a stable reference like tarka 1.0.
+The 0.9.0 cut is the release candidate; **1.0.0 is a clean version bump + a small doc pass.**
+
+- ✅ **API freeze** — [`docs/api.md`](../api.md) + [ADR 0001](../adr/0001-api-freeze.md): the
+  `fdgate` consumable surface + the per-milestone reference interface, frozen; gates (not digits)
+  are the contract.
+- ✅ **Benchmarks** — [`docs/benchmarks.md`](../benchmarks.md): footprint, correctness, convergence.
+- ✅ **Downstream-consumer example** — [`examples/gate_consumer.cyr`](../../examples/) (builds + exit 0).
+- ✅ **Security sign-off** — [`SECURITY.md`](../../SECURITY.md) (0.6.2): threat model + dep audit.
+- ✅ **Every hand-derived backward FD-checked** — all M1–M5 gates green, NaN-safe (0.6.0).
+- ✅ **CHANGELOG complete** — Keep-a-Changelog through 0.9.0.
+
+> **▶ 1.0.0 = clean cut.** Bump VERSION, move `[0.9.0]`-era notes to `[1.0.0]`, retag. The
+> reference, the hardening, and the docs are done.
 
 ## Out of scope (for v1.0)
 

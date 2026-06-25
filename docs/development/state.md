@@ -5,11 +5,11 @@
 
 ## Version
 
-**0.6.3** — final patch of the **0.6.x hardening arc**, cut 2026-06-24: **refactor** (audit R-2,
-R-3). FD-gate infrastructure (`fd_central`/`fd_eps`/`ften`) centralized in `fdgate.cyr`; `ften`/
-`ften2` duplicates gone; R-1 + perturb loop left in-module by design. **The 0.6.x arc is COMPLETE**
-(0.6.0 NaN-safe gates · 0.6.1 numerical robustness · 0.6.2 security/supply-chain · 0.6.3 refactor;
-M1–M5 = 0.1.0–0.5.0). Next: the **v1.0 freeze cycle**.
+**0.9.0** — the **1.0 release candidate**, cut 2026-06-24. All v1.0 criteria met: API frozen
+([`api.md`](../api.md) + ADR 0001), [`benchmarks.md`](../benchmarks.md), a buildable
+downstream-consumer example ([`examples/`](../../examples/)), `SECURITY.md`, README + docs index.
+No code change to the reference — API-freeze + docs only. (M1–M5 = 0.1.0–0.5.0; 0.6.x hardening
+arc = 0.6.0–0.6.3.) Next: **1.0.0 = clean version cut + small doc pass.**
 
 ## Toolchain
 
@@ -107,7 +107,7 @@ _None yet._
 
 ## Next
 
-**The v1.0 freeze cycle** — the 0.6.x hardening arc is complete (0.6.0–0.6.3; every audit finding
-resolved or consciously deferred). v1.0 criteria: API freeze + `docs/api.md`, a `docs/benchmarks.md`,
-≥1 downstream-consumer example, a security sign-off (`SECURITY.md` done), CHANGELOG complete, every
-hand-derived backward FD-checked (done). Graduates prajna to a stable 1.0. See [`roadmap.md`](roadmap.md).
+**1.0.0 — a clean version cut.** All v1.0 criteria are met at 0.9.0 (API freeze, benchmarks,
+consumer example, security sign-off, CHANGELOG, all backward FD-checked). 1.0.0 is: bump VERSION
+to 1.0.0, roll the `[0.9.0]` heading to `[1.0.0]` in the CHANGELOG, refresh this line, retag.
+No engineering remains. See [`roadmap.md`](roadmap.md).

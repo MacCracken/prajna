@@ -36,17 +36,45 @@ $ cyrius build src/main.cyr build/prajna && ./build/prajna
   ... meta-descent: theta 0.5 -> 3.499  (optimum 3.5)
 ```
 
+M1 above is the minimal worked example; the demo runs the full reference end-to-end.
+
+## The full reference (M1–M5, complete)
+
+Every hand-derived gradient is finite-difference-gated. `./build/prajna` exits 0 iff all gates pass.
+
+- **M1** — scalar second-order meta-gradient (the MAML primitive).
+- **M2 — MAML**: linear (M2.a) → nonlinear via the **Pearlmutter R-operator** double-backward
+  (M2.b) → sine few-shot meta-learning with a sovereign `f64_sin` (M2.c).
+- **M3 — learned optimizers**: meta-learn the *update rule* via **BPTT** through an unroll —
+  feedforward (M3.a/b, beats best fixed-lr SGD) and recurrent (M3.c).
+- **M4 — text few-shot**: a tiny next-token LM on the shared **akshara** tokenizer (M4.a), then
+  MAML over text tasks — "MAML works on text" (M4.b).
+- **M5 — continual learning**: experience replay (+ EWC) so sequential adaptation doesn't forget.
+
+Hardened across the **0.6.x arc** (NaN-safe gates, numerical robustness, security audit, refactor).
+
 ## Build
 
 ```sh
-cyrius deps                               # resolve sibling deps (none beyond stdlib at M1)
+cyrius deps                               # resolve sibling deps (rosnet, tyche, akshara)
 cyrius build src/main.cyr build/prajna    # compile the demo
 cyrius test                               # run the FD-gate assertions
+./build/prajna                            # the full M1–M5 reference (exit 0 = all gates pass)
 ```
+
+## Documentation
+
+- **API** (frozen at 1.0): [`docs/api.md`](docs/api.md)
+- **Benchmarks** (footprint, correctness, convergence): [`docs/benchmarks.md`](docs/benchmarks.md)
+- **Security** (threat model + supply chain): [`SECURITY.md`](SECURITY.md)
+- **Examples** (consume `fdgate`): [`examples/`](examples/)
+- **Roadmap & state**: [`docs/development/roadmap.md`](docs/development/roadmap.md) ·
+  [`docs/development/state.md`](docs/development/state.md)
+- **ADRs**: [`docs/adr/`](docs/adr/)
 
 ## Where it sits
 
-- The roadmap (M1 → v1.0): [`docs/development/roadmap.md`](docs/development/roadmap.md)
+- Sibling reference to attn11 / tarka / tentib on the same f64 substrate (rosnet/tyche/akshara).
 - Why it exists / why it is a *reference* and not RSI orchestration: agnosticos
   `docs/development/planning/self-improvement-lane.md`
 
