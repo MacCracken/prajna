@@ -55,5 +55,6 @@ environment. There are no third-party or registry dependencies.
 
 ## Reporting
 
-prajna is pre-1.0 research software in the AGNOS ecosystem. Report suspected correctness or
-safety issues via the repository's issue tracker. There is no production deployment surface.
+prajna is a **1.0 stable reference** in the AGNOS ecosystem — research/reference software with no
+production deployment surface. Report suspected correctness or safety issues via the repository's
+issue tracker.

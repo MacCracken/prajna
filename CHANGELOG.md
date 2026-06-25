@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-06-24
+
+**First stable release.** prajna is the AGNOS family's sovereign **meta-learning / learn-to-learn**
+reference: the first **second-order / nested gradient** (MAML — scalar → linear → nonlinear via the
+Pearlmutter R-operator), **learned optimizers** (feedforward + recurrent BPTT, beating fixed-lr SGD),
+**text few-shot** on the shared `akshara` tokenizer, and **continual-learning durability** (experience
+replay + EWC) — all hand-derived on raw `f64`, finite-difference-gated, with no autodiff/BLAS/libc.
+
+Hardened across the 0.6.x arc (NaN-safe gates, numerical robustness, security audit, refactor) and
+the public API is frozen ([`docs/api.md`](docs/api.md) + ADR 0001). No code change since 0.9.0 —
+this release is the stability commitment.
+
 ## [0.9.0] — 2026-06-24
 
 **Release candidate for 1.0.** All v1.0 criteria are met; 1.0.0 will be a clean version cut

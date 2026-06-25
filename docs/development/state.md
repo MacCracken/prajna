@@ -5,11 +5,11 @@
 
 ## Version
 
-**0.9.0** — the **1.0 release candidate**, cut 2026-06-24. All v1.0 criteria met: API frozen
-([`api.md`](../api.md) + ADR 0001), [`benchmarks.md`](../benchmarks.md), a buildable
-downstream-consumer example ([`examples/`](../../examples/)), `SECURITY.md`, README + docs index.
-No code change to the reference — API-freeze + docs only. (M1–M5 = 0.1.0–0.5.0; 0.6.x hardening
-arc = 0.6.0–0.6.3.) Next: **1.0.0 = clean version cut + small doc pass.**
+**1.0.0** — **first stable release**, cut 2026-06-24. The complete sovereign meta-learning
+reference: M1–M5 (2nd-order MAML / learned optimizers / text few-shot / continual learning),
+hardened across the 0.6.x arc, public API frozen ([`api.md`](../api.md) + ADR 0001). Shipped
+with [`benchmarks.md`](../benchmarks.md), a downstream-consumer example ([`examples/`](../../examples/)),
+and `SECURITY.md`. (M1–M5 = 0.1.0–0.5.0; hardening = 0.6.0–0.6.3; 0.9.0 = the RC.)
 
 ## Toolchain
 
@@ -60,38 +60,16 @@ arc = 0.6.0–0.6.3.) Next: **1.0.0 = clean version cut + small doc pass.**
 - `src/main.cyr` — demo: M1 → M2.* → M3.* → M4.* → M5, per-stage gates. Exit 0 iff all pass.
 - `src/test.cyr` — `[build].test`: NaN-guard assertions + all FD gates + M2.c/M3/M4/M5 results.
 
-## Verification (2026-06-24)
+## Verification (1.0.0, 2026-06-24)
 
 - `cyrius build` → OK; `./build/prajna` → exit 0; `cyrius test` → 2 passed / 0 failed;
-  all 5 src files lint clean (0 warnings).
-- **M1**: `|full − FD| = 0` ; `|FOMAML − FD| = 0.48` ; meta-descent `θ: 0.5 → 3.499`.
-- **M2.a**: full meta-grad matches FD on **all 4 params exactly**; FOMAML wrong-signed
-  on `W[0]` (`−0.393` vs `+0.031`); meta-descent loss `0.200 → 0.053` monotone.
-- **M2.b.1**: support `Ls = 0.072669`; hand-derived ∇Ls matches FD on **all 13 params**.
-- **M2.b.2**: **three-level FD gate all PASS** — ∇Ls, the R-operator HVP (vs
-  FD-of-gradient), and the full second-order meta-grad (vs FD-of-meta-loss); FOMAML
-  observably differs (θ-dependent Hessian is real); meta-descent `0.050 → 0.030`.
-- **M2.c.1**: `f64_sin` valid at known angles (<1e-5); the three FD gates **pass at the
-  K=1,H=8 sine config** on a sampled task — the R-operator engine generalizes.
-- **M2.c.2**: held-out 10-shot adapt loss descends **monotonically 2.476 → 1.560**
-  (~37%) over 1000 meta-training steps (K=1, H=40, 16-task meta-batch) — meta-training
-  measurably improves few-shot adaptation.
-- **M2.c.3**: full-2nd-order vs FOMAML from identical init+schedule → **statistically
-  equivalent** (1.692 vs 1.690, |diff| ~0.1%) — the HVP buys little at this scale (the
-  Finn 2017 FOMAML honest-negative).
-- **M3.a**: learned-optimizer BPTT meta-grad **matches FD on all 19 optimizer params**
-  (untrained unroll L=32.47, T=8).
-- **M3.b**: meta-training drops held-out trajectory loss **23.1 → 0.096**; the meta-trained
-  optimizer **beats the best fixed-lr SGD** (0.096 vs 0.107).
-- **M3.c**: recurrent-optimizer two-recurrence BPTT **matches FD on all 29 params**;
-  meta-trains to **0.085** — beating feedforward (0.096) and SGD (0.107).
-- **M4.a**: next-token LM on akshara-tokenized "hello world" (V=8, M=10 pairs, NLL 2.106 ≈
-  ln 8); embedding+head+softmax-xent backprop **matches FD on all 72 params**.
-- **M4.b**: text-MAML over cyclic-shift tasks — held-out 1-step adaptation NLL **2.37 → 0.49**
-  (~79%) over meta-training.
-- **M5**: MLP backprop FD-gated (25 params); naive sequential forgets A (0.05→0.56),
-  **experience replay retains A** (→0.00006) + fits B (0.178). EWC honest-negative at toy scale.
-  Demo run exit 0; `cyrius test` green (all FD gates + M2.c + M3.a/b/c + M4.a/b + M5).
+  all 13 `src/*.cyr` modules lint clean (0 warnings); the `examples/` consumer builds + exits 0.
+- **Every hand-derived gradient is FD-gated** and NaN-safe (0.6.0): M1 (scalar) · M2.a (4 params) ·
+  M2.b.1 (13) · M2.b.2 three-level R-operator gate · M3.a (19) · M3.c (29) · M4.a (72) · M5 (25).
+- **Headline convergence**: M3.b learned optimizer **beats best fixed-lr SGD** (0.096 vs 0.107);
+  M4.b text-MAML held-out NLL **2.37 → 0.49**; M5 replay retains task A (0.56 naive → 0.00006).
+- **Full footprint + per-milestone numbers**: [`benchmarks.md`](../benchmarks.md) (the authoritative
+  benchmark record — this section is a summary, not a duplicate).
 
 ## Dependencies
 
@@ -103,11 +81,14 @@ Direct (declared in `cyrius.cyml`):
 
 ## Consumers
 
-_None yet._
+- [`examples/gate_consumer.cyr`](../../examples/) — vendors `fdgate` to FD-gate an external
+  gradient (the reference example for downstream consumption).
+- Pattern-shared with the sibling references (attn11/tarka/tentib all FD-gate hand-derived
+  gradients the same way).
 
 ## Next
 
-**1.0.0 — a clean version cut.** All v1.0 criteria are met at 0.9.0 (API freeze, benchmarks,
-consumer example, security sign-off, CHANGELOG, all backward FD-checked). 1.0.0 is: bump VERSION
-to 1.0.0, roll the `[0.9.0]` heading to `[1.0.0]` in the CHANGELOG, refresh this line, retag.
-No engineering remains. See [`roadmap.md`](roadmap.md).
+**1.0.0 shipped — no active engineering.** prajna is feature-complete and stable; the API is
+frozen (a breaking change is a 2.0). Post-1.0 work is maintenance only: dep folds when
+rosnet/tyche/akshara cut new GA tags, and any future ML-reference ideas the family surfaces
+(none planned). See [`roadmap.md`](roadmap.md).

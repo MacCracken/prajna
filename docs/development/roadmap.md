@@ -121,11 +121,11 @@ task A, then task B:
 > reference: 2nd-order MAML (scalar→linear→nonlinear R-operator), learned optimizers (feedforward
 > + recurrent BPTT), text few-shot on `akshara`, and continual-learning durability.
 
-## 0.6.x — Hardening arc (audit / hardening / security / refactor)
+## 0.6.x — Hardening arc (audit / hardening / security / refactor) — done
 
-Before the v1.0 freeze: a hardening pass, each theme its own patch. Grounded in the full-codebase
-audit in [`audit-0.6.md`](audit-0.6.md) (key finding: the FD gates are **NaN-blind** — a NaN
-gradient silently *passes*; `f64_le(NaN,x)==1`).
+The hardening pass that preceded 1.0, each theme its own patch. Grounded in the full-codebase
+audit in [`audit-0.6.md`](audit-0.6.md) (key finding: the FD gates were **NaN-blind** — a NaN
+gradient silently *passed*; `f64_le(NaN,x)==1`).
 
 - **0.6.0 — Audit + NaN-safe gates — ✅ landed 2026-06-24** (fixes audit **N-1**): the audit
   doc + `src/fdgate.cyr` (`fd_finite`/`fd_match`/`fd_exceeds` via NaN-safe `f64_gt`). All 9 gates
@@ -144,11 +144,11 @@ gradient silently *passes*; `f64_le(NaN,x)==1`).
 
 > **▶ 0.6.x HARDENING ARC COMPLETE (2026-06-24).** NaN-safe gates (0.6.0) · numerical robustness
 > (0.6.1) · security/supply-chain + `SECURITY.md` (0.6.2) · FD-infra refactor (0.6.3). Every audit
-> finding (N-1, N-2, N-3, M-1, S-1, R-2, R-3) resolved or consciously deferred. → **v1.0 freeze.**
+> finding (N-1, N-2, N-3, M-1, S-1, R-2, R-3) resolved or consciously deferred. → shipped in **1.0.0**.
 
-## v1.0 criteria — ALL MET at 0.9.0 (2026-06-24)
+## v1.0 criteria — ALL MET, shipped in 1.0.0 (2026-06-24)
 
-The 0.9.0 cut is the release candidate; **1.0.0 is a clean version bump + a small doc pass.**
+Met at 0.9.0 (the release candidate); **1.0.0 was the clean version cut.**
 
 - ✅ **API freeze** — [`docs/api.md`](../api.md) + [ADR 0001](../adr/0001-api-freeze.md): the
   `fdgate` consumable surface + the per-milestone reference interface, frozen; gates (not digits)
@@ -159,8 +159,9 @@ The 0.9.0 cut is the release candidate; **1.0.0 is a clean version bump + a smal
 - ✅ **Every hand-derived backward FD-checked** — all M1–M5 gates green, NaN-safe (0.6.0).
 - ✅ **CHANGELOG complete** — Keep-a-Changelog through 0.9.0.
 
-> **▶ 1.0.0 = clean cut.** Bump VERSION, move `[0.9.0]`-era notes to `[1.0.0]`, retag. The
-> reference, the hardening, and the docs are done.
+> **▶ 1.0.0 SHIPPED (2026-06-24).** First stable release. The reference (M1–M5), the 0.6.x
+> hardening arc, and the v1.0 docs are all done; the public API is frozen. Post-1.0 is maintenance
+> only (dep folds; no planned feature work).
 
 ## Out of scope (for v1.0)
 
