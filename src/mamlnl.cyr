@@ -242,7 +242,7 @@ fn nm_fomaml_val(idx): i64 { return nm_at(NgqW1,Ngqb1,NgqW2,Ngqb2, idx); }
 
 # --- GATE 1: ∇Ls matches FD of Ls ---
 fn nm_grad_gate(): i64 {
-    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000));
+    var NP=nm_np(); var eps=fd_eps();
     nm_support_fwd_grad();
     var ok=1; var i=0;
     while (i<NP) {
@@ -250,7 +250,7 @@ fn nm_grad_gate(): i64 {
         store64(pp, f64_add(o,eps)); var hi=nm_support_loss();
         store64(pp, f64_sub(o,eps)); var lo=nm_support_loss();
         store64(pp, o);
-        var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+        var fd=fd_central(hi,lo,eps);
         if (fd_match(nm_lsgrad_val(i), fd, nm_tol())==0) { ok=0; }
         i=i+1;
     }
@@ -258,7 +258,7 @@ fn nm_grad_gate(): i64 {
 }
 # --- GATE 2: H_s·v matches FD-of-gradient (isolates the R-pass) ---
 fn nm_hvp_gate(): i64 {
-    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000));
+    var NP=nm_np(); var eps=fd_eps();
     nm_support_fwd_grad();
     nm_rpass(NvW1,Nvb1,NvW2,Nvb2);                                   # Nh* = H·v (before any perturb)
     var i=0; while (i<NP) { store64(Norig+i*8, load64(nm_param_ptr(i))); i=i+1; }
@@ -271,7 +271,7 @@ fn nm_hvp_gate(): i64 {
     i=0; while (i<NP) { store64(nm_param_ptr(i), load64(Norig+i*8)); i=i+1; }
     var ok=1; i=0;
     while (i<NP) {
-        var fd=f64_div(f64_sub(load64(Ngp+i*8),load64(Ngm+i*8)), f64_mul(f64_from(2),eps));
+        var fd=fd_central(load64(Ngp+i*8), load64(Ngm+i*8), eps);
         if (fd_match(nm_hvp_val(i), fd, nm_tol())==0) { ok=0; }
         i=i+1;
     }
@@ -279,7 +279,7 @@ fn nm_hvp_gate(): i64 {
 }
 # --- GATE 3: the full second-order meta-grad matches FD of the meta-loss ---
 fn nm_meta_grad_gate(): i64 {
-    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000));
+    var NP=nm_np(); var eps=fd_eps();
     nm_meta_grad();
     var ok=1; var i=0;
     while (i<NP) {
@@ -287,7 +287,7 @@ fn nm_meta_grad_gate(): i64 {
         store64(pp, f64_add(o,eps)); var hi=nm_meta_loss();
         store64(pp, f64_sub(o,eps)); var lo=nm_meta_loss();
         store64(pp, o);
-        var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+        var fd=fd_central(hi,lo,eps);
         if (fd_match(nm_meta_val(i), fd, nm_tol())==0) { ok=0; }
         i=i+1;
     }
@@ -295,7 +295,7 @@ fn nm_meta_grad_gate(): i64 {
 }
 # FOMAML (drop the -α·HVP term) must differ from FD-of-meta-loss somewhere.
 fn nm_2nd_observable(): i64 {
-    var NP=nm_np(); var eps=f64_div(f64_from(1),f64_from(100000)); var seen=0;
+    var NP=nm_np(); var eps=fd_eps(); var seen=0;
     nm_meta_grad();
     var i=0;
     while (i<NP) {
@@ -303,7 +303,7 @@ fn nm_2nd_observable(): i64 {
         store64(pp, f64_add(o,eps)); var hi=nm_meta_loss();
         store64(pp, f64_sub(o,eps)); var lo=nm_meta_loss();
         store64(pp, o);
-        var fd=f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+        var fd=fd_central(hi,lo,eps);
         if (fd_exceeds(nm_fomaml_val(i), fd, nm_tol())==1) { seen=1; }
         i=i+1;
     }

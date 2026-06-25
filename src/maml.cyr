@@ -132,13 +132,13 @@ fn maml_meta_grad(): i64 {
 # Central finite-difference of dM/dθ_idx (idx in 0..K-1 -> W, idx==K -> b).
 fn maml_fd_grad(idx): i64 {
     var K = maml_k();
-    var eps = f64_div(f64_from(1), f64_from(100000));            # 1e-5
+    var eps = fd_eps();
     var pp = M_b; if (idx < K) { pp = M_W + idx*8; }
     var orig = load64(pp);
     store64(pp, f64_add(orig, eps)); var hi = maml_meta_loss();
     store64(pp, f64_sub(orig, eps)); var lo = maml_meta_loss();
     store64(pp, orig);
-    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+    return fd_central(hi, lo, eps);
 }
 
 fn maml_an_full(idx): i64 { var K = maml_k(); if (idx < K) { return load64(M_oW+idx*8); } return load64(M_ob); }

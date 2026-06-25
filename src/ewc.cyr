@@ -14,7 +14,7 @@ fn ec_ma(): i64 { return 4; }                                  # task-A points
 fn ec_mb(): i64 { return 4; }                                  # task-B points
 fn ec_np(): i64 { return 3*ec_h() + 1; }                       # W1[H]+b1[H]+W2[H]+b2 = 25
 fn ec_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }  # 1e-4
-fn ften2(n): i64 { return f64_div(f64_from(n), f64_from(10)); }     # n/10
+# ften (n/10) lives in fdgate.cyr (0.6.3)
 
 var EC_W1=0; var EC_b1=0; var EC_W2=0; var EC_b2=0;            # params θ
 var EC_dW1=0; var EC_db1=0; var EC_dW2=0; var EC_db2=0;        # grads
@@ -35,14 +35,14 @@ fn ec_init(): i64 {
     EC_dHh=t_alloc(Mx*H); EC_dZ=t_alloc(Mx*H); EC_dXd=t_alloc(Mx);
     EC_snap=t_alloc(NP); EC_F=t_alloc(NP);
     # task A: wiggle on x in [-2,-0.5] ; task B: wiggle on x in [0.5,2]
-    store64(EC_Xa+0*8, ften2(0-20)); store64(EC_Xa+1*8, ften2(0-15));
-    store64(EC_Xa+2*8, ften2(0-10)); store64(EC_Xa+3*8, ften2(0-5));
-    store64(EC_Ta+0*8, ften2(7)); store64(EC_Ta+1*8, ften2(0-7));
-    store64(EC_Ta+2*8, ften2(7)); store64(EC_Ta+3*8, ften2(0-7));
-    store64(EC_Xb+0*8, ften2(5)); store64(EC_Xb+1*8, ften2(10));
-    store64(EC_Xb+2*8, ften2(15)); store64(EC_Xb+3*8, ften2(20));
-    store64(EC_Tb+0*8, ften2(0-7)); store64(EC_Tb+1*8, ften2(7));
-    store64(EC_Tb+2*8, ften2(0-7)); store64(EC_Tb+3*8, ften2(7));
+    store64(EC_Xa+0*8, ften(0-20)); store64(EC_Xa+1*8, ften(0-15));
+    store64(EC_Xa+2*8, ften(0-10)); store64(EC_Xa+3*8, ften(0-5));
+    store64(EC_Ta+0*8, ften(7)); store64(EC_Ta+1*8, ften(0-7));
+    store64(EC_Ta+2*8, ften(7)); store64(EC_Ta+3*8, ften(0-7));
+    store64(EC_Xb+0*8, ften(5)); store64(EC_Xb+1*8, ften(10));
+    store64(EC_Xb+2*8, ften(15)); store64(EC_Xb+3*8, ften(20));
+    store64(EC_Tb+0*8, ften(0-7)); store64(EC_Tb+1*8, ften(7));
+    store64(EC_Tb+2*8, ften(0-7)); store64(EC_Tb+3*8, ften(7));
     # A+B replay buffer (A's pairs followed by B's)
     var m=0;
     while (m < Ma) { store64(EC_Xab+m*8, load64(EC_Xa+m*8)); store64(EC_Tab+m*8, load64(EC_Ta+m*8)); m=m+1; }
@@ -102,12 +102,12 @@ fn ec_gv(idx): i64 {
     return load64(EC_db2);
 }
 fn ec_fd_grad(idx): i64 {
-    var eps=f64_div(f64_from(1),f64_from(100000));
+    var eps=fd_eps();
     var pp=ec_pp(idx); var o=load64(pp);
     store64(pp, f64_add(o,eps)); var hi=ec_forward();
     store64(pp, f64_sub(o,eps)); var lo=ec_forward();
     store64(pp, o);
-    return f64_div(f64_sub(hi,lo), f64_mul(f64_from(2),eps));
+    return fd_central(hi, lo, eps);
 }
 fn ec_grad_gate(): i64 {                                       # FD-gate the MLP backward on task A
     ec_set_a(); ec_backward();

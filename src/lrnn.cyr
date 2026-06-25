@@ -151,12 +151,12 @@ fn lr_gv(idx): i64 {
     return load64(LR_dbu);
 }
 fn lr_fd(idx): i64 {
-    var eps = f64_div(f64_from(1), f64_from(100000));
+    var eps = fd_eps();
     var pp = lr_pp(idx); var o = load64(pp);
     store64(pp, f64_add(o, eps)); var hi = lr_forward();
     store64(pp, f64_sub(o, eps)); var lo = lr_forward();
     store64(pp, o);
-    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+    return fd_central(hi, lo, eps);
 }
 fn lr_gate(): i64 {
     lr_meta_grad();

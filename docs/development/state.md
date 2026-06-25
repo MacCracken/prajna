@@ -5,11 +5,11 @@
 
 ## Version
 
-**0.6.2** — third patch of the **0.6.x hardening arc**, cut 2026-06-24: **security / supply-chain**
-(audit S-1, M-1). `SECURITY.md` threat model (no untrusted input; non-crypto PRNG; stubbed
-loaders) + dep-pin audit (rosnet/tyche/akshara all first-party, pinned at latest); scratch buffers
-sized by `max(Ms,Mq)·max(K,H)`. (0.6.0 NaN-safe gates; 0.6.1 numerical robustness; M1–M5 =
-0.1.0–0.5.0.) Next: **0.6.3** refactor.
+**0.6.3** — final patch of the **0.6.x hardening arc**, cut 2026-06-24: **refactor** (audit R-2,
+R-3). FD-gate infrastructure (`fd_central`/`fd_eps`/`ften`) centralized in `fdgate.cyr`; `ften`/
+`ften2` duplicates gone; R-1 + perturb loop left in-module by design. **The 0.6.x arc is COMPLETE**
+(0.6.0 NaN-safe gates · 0.6.1 numerical robustness · 0.6.2 security/supply-chain · 0.6.3 refactor;
+M1–M5 = 0.1.0–0.5.0). Next: the **v1.0 freeze cycle**.
 
 ## Toolchain
 
@@ -107,7 +107,7 @@ _None yet._
 
 ## Next
 
-**0.6.x hardening arc** (grounded in [`audit-0.6.md`](audit-0.6.md)). **0.6.0 ✅** (NaN-safe
-gates), **0.6.1 ✅** (numerical robustness), **0.6.2 ✅** (security/supply-chain). Remaining:
-**0.6.3** refactor (R-1/R-2/R-3 shared param-addressing + gate harness). Then the v1.0 freeze
-cycle. See [`roadmap.md`](roadmap.md).
+**The v1.0 freeze cycle** — the 0.6.x hardening arc is complete (0.6.0–0.6.3; every audit finding
+resolved or consciously deferred). v1.0 criteria: API freeze + `docs/api.md`, a `docs/benchmarks.md`,
+≥1 downstream-consumer example, a security sign-off (`SECURITY.md` done), CHANGELOG complete, every
+hand-derived backward FD-checked (done). Graduates prajna to a stable 1.0. See [`roadmap.md`](roadmap.md).

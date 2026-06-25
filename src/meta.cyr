@@ -46,10 +46,10 @@ fn meta_grad_fomaml(t): i64 {
 }
 # Central finite-difference reference for dM/dt (the gate's ground truth).
 fn meta_grad_fd(t): i64 {
-    var eps = f64_div(f64_from(1), f64_from(10000));                          # 1e-4
+    var eps = fd_eps();                                                       # shared 1e-5 (was 1e-4)
     var hi = meta_loss(f64_add(t, eps));
     var lo = meta_loss(f64_sub(t, eps));
-    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+    return fd_central(hi, lo, eps);
 }
 
 fn meta_tol(): i64 { return f64_div(f64_from(1), f64_from(100000)); }         # 1e-5

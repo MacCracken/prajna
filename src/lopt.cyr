@@ -110,12 +110,12 @@ fn lo_grad_val(idx): i64 {
     return load64(LO_db2);
 }
 fn lo_fd_grad(idx): i64 {
-    var eps = f64_div(f64_from(1), f64_from(100000));          # 1e-5
+    var eps = fd_eps();
     var pp = lo_param_ptr(idx); var o = load64(pp);
     store64(pp, f64_add(o, eps)); var hi = lo_forward();
     store64(pp, f64_sub(o, eps)); var lo = lo_forward();
     store64(pp, o);
-    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+    return fd_central(hi, lo, eps);
 }
 # Gate: the BPTT meta-grad matches finite-diff on every optimizer param.
 fn lo_gate(): i64 {

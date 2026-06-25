@@ -18,7 +18,7 @@ fn mlp_h(): i64 { return 3; }                                   # hidden units
 fn mlp_ms(): i64 { return 4; }                                  # support examples
 fn mlp_np(): i64 { return mlp_k()*mlp_h() + mlp_h() + mlp_h() + 1; }   # 13 params
 fn mlp_tol(): i64 { return f64_div(f64_from(1), f64_from(10000)); }    # 1e-4
-fn ften(n): i64 { return f64_div(f64_from(n), f64_from(10)); }         # n/10 as f64
+# ften (n/10) now lives in fdgate.cyr (0.6.3) — shared by mlp/mamlnl/sine/lopt/lrnn/ewc
 
 var P_W1 = 0; var P_b1 = 0; var P_W2 = 0; var P_b2 = 0;        # params
 var P_X = 0; var P_T = 0;                                       # support data
@@ -105,12 +105,12 @@ fn mlp_grad_val(idx): i64 {
     return load64(P_db2);
 }
 fn mlp_fd_grad(idx): i64 {
-    var eps = f64_div(f64_from(1), f64_from(100000));            # 1e-5
+    var eps = fd_eps();
     var pp = mlp_param_ptr(idx); var orig = load64(pp);
     store64(pp, f64_add(orig, eps)); var hi = mlp_forward();
     store64(pp, f64_sub(orig, eps)); var lo = mlp_forward();
     store64(pp, orig);
-    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+    return fd_central(hi, lo, eps);
 }
 
 # Gate: hand-derived ∇Ls matches finite-diff on EVERY param.

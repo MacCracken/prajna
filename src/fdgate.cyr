@@ -1,4 +1,9 @@
-# prajna — shared finite-difference gate comparison (0.6.0 hardening; fixes audit N-1).
+# prajna — shared finite-difference-gate infrastructure (0.6.0 hardening N-1; consolidated
+# across 0.6.0/0.6.1/0.6.3). The whole FD-gate machinery — NaN-safe comparison, the
+# central-difference arithmetic, the perturbation epsilon — lives here instead of being
+# copy-pasted into all 9 gates. (The per-gate forward fns and segment-addressers stay in
+# their modules by design: each module is a readable standalone reference, and extracting
+# the forward call would need function-value indirection.)
 #
 # THE BUG: every FD gate compared with f64_le(|analytic - fd|, tol). cyrius f64_le is
 # !f64_gt, and f64_gt is IEEE (NaN comparisons are false), so f64_le(NaN, tol) == 1
@@ -42,3 +47,10 @@ fn fd_le_finite(a, b): i64 {
     if (fd_finite(a) == 0) { return 0; }
     return f64_le(a, b);
 }
+
+# --- shared FD-gate arithmetic + literal helpers (0.6.3 refactor; were copy-pasted) ---
+fn fd_eps(): i64 { return f64_div(f64_from(1), f64_from(100000)); }   # 1e-5 central-diff step
+fn fd_central(hi, lo, eps): i64 {                                     # (f(x+eps) - f(x-eps)) / 2eps
+    return f64_div(f64_sub(hi, lo), f64_mul(f64_from(2), eps));
+}
+fn ften(n): i64 { return f64_div(f64_from(n), f64_from(10)); }        # n/10 as f64 (param/data init)

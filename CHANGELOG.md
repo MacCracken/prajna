@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.3] — 2026-06-24
+
+Final patch of the 0.6.x hardening arc — refactor (audit R-2, R-3). **Arc complete.**
+
+### Changed
+- **R-2/R-3: the FD-gate infrastructure is centralized in `src/fdgate.cyr`.** The
+  central-difference arithmetic (`fd_central`), the perturbation step (`fd_eps`, a shared 1e-5
+  — meta's gate moved from 1e-4 to match, still green), and the `n/10` literal (`ften`) were
+  copy-pasted across the modules; they now live in one place. 8 modules use `fd_central`/`fd_eps`,
+  5 use `ften`; `mlp`'s `ften` and `ewc`'s `ften2` duplicates are gone. Behaviour is identical —
+  the FD gates themselves verify the central-diff is correct (all M1–M5 gates remain green).
+- **Deliberately NOT extracted** (audit R-1 + the per-gate perturb loop): the segment
+  param-addressers and each gate's forward call stay in their modules. Each module is a readable
+  standalone reference, and extracting the forward call would need function-value indirection —
+  more risk and less clarity than the duplication it removes.
+
 ## [0.6.2] — 2026-06-24
 
 Third patch of the 0.6.x hardening arc — security / supply-chain (audit S-1, M-1).

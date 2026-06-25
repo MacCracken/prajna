@@ -137,8 +137,14 @@ gradient silently *passes*; `f64_le(NaN,x)==1`).
 - **0.6.2 — Security / supply-chain — ✅ landed 2026-06-24** (**S-1, M-1**): `SECURITY.md` threat
   model (no untrusted input, non-crypto PRNG, stubbed loaders) + dep-pin audit (all first-party,
   pinned at latest); scratch buffers sized by `max(Ms,Mq)·max(K,H)` so `Ms≠Mq` can't overrun.
-- **0.6.3 — Refactor** (**R-1, R-2, R-3**): extract the shared param-addressing + FD-gate harness
-  (NaN-guard in one place), dedup `ften`, shrink surface before freeze.
+- **0.6.3 — Refactor — ✅ landed 2026-06-24** (**R-2, R-3**): the FD-gate infrastructure
+  (`fd_central`/`fd_eps`/`ften`) is centralized in `fdgate.cyr`; `ften`/`ften2` duplicates gone.
+  R-1 (segment addressers) + the per-gate perturb loop left in-module by design (reference
+  readability > DRY; the forward call would need function-value indirection). All gates green.
+
+> **▶ 0.6.x HARDENING ARC COMPLETE (2026-06-24).** NaN-safe gates (0.6.0) · numerical robustness
+> (0.6.1) · security/supply-chain + `SECURITY.md` (0.6.2) · FD-infra refactor (0.6.3). Every audit
+> finding (N-1, N-2, N-3, M-1, S-1, R-2, R-3) resolved or consciously deferred. → **v1.0 freeze.**
 
 ## v1.0 criteria (after 0.6.x)
 
